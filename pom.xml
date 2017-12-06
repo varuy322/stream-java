@@ -85,14 +85,21 @@
                 </configuration>
             </plugin>
             <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
+                <!-- Use compiler plugin with tycho as the adapter to the JDT compiler. -->
                 <artifactId>maven-compiler-plugin</artifactId>
-                <version>2.3.2</version>
                 <configuration>
                     <source>1.8</source>
                     <target>1.8</target>
-                    <encoding>UTF-8</encoding>
+                    <compilerId>jdt</compilerId>
                 </configuration>
+                <dependencies>
+                    <!-- This dependency provides the implementation of compiler "jdt": -->
+                    <dependency>
+                        <groupId>org.eclipse.tycho</groupId>
+                        <artifactId>tycho-compiler-jdt</artifactId>
+                        <version>0.21.0</version>
+                    </dependency>
+                </dependencies>
             </plugin>
         </plugins>
     </build>

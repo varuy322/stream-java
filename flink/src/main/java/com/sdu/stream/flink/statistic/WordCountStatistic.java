@@ -10,6 +10,7 @@ import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.contrib.streaming.state.RocksDBStateBackend;
 import org.apache.flink.streaming.api.datastream.DataStreamSource;
+import org.apache.flink.streaming.api.environment.CheckpointConfig;
 import org.apache.flink.streaming.api.environment.LocalStreamEnvironment;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.api.functions.sink.PrintSinkFunction;
@@ -20,6 +21,10 @@ import org.slf4j.LoggerFactory;
 import java.util.Map;
 import java.util.regex.Pattern;
 
+import static org.apache.flink.configuration.ConfigConstants.CHECKPOINTS_DIRECTORY_KEY;
+import static org.apache.flink.streaming.api.CheckpointingMode.EXACTLY_ONCE;
+import static org.apache.flink.streaming.api.environment.CheckpointConfig.ExternalizedCheckpointCleanup.DELETE_ON_CANCELLATION;
+
 
 /**
  * @author hanhan.zhang
@@ -29,7 +34,8 @@ public class WordCountStatistic {
     private static final Logger LOGGER = LoggerFactory.getLogger(WordCountStatistic.class);
 
     private static final String PATH = "file:///Users/hanhan.zhang/tmp/words.txt";
-    private static final String CHECK_STATE_PATH = "file:///Users/hanhan.zhang/tmp";
+    private static final String EXTERNAL_CHECK_STATE_DIR = "file:///Users/hanhan.zhang/tmp/external/chk";
+    private static final String CHECK_STATE_PATH = "file:///Users/hanhan.zhang/tmp/chk";
 
     // 是否只统计汉子
     private static final String STATISTIC_CHINESE_ONLY = "statistic.chinese.only";
@@ -67,8 +73,8 @@ public class WordCountStatistic {
     }
 
     public static void main(String[] args) throws Exception {
-        LocalStreamEnvironment env = StreamExecutionEnvironment.createLocalEnvironment();
-        env.setParallelism(3);
+        Configuration cfg = new Configuration();
+        LocalStreamEnvironment env = StreamExecutionEnvironment.createLocalEnvironment(3, cfg);
 
         // 用户参数配置
         env.getConfig().setGlobalJobParameters(new GlobalJobParameters() {
@@ -81,7 +87,13 @@ public class WordCountStatistic {
         });
 
         // Checkpoint配置
-        env.getCheckpointConfig();
+        CheckpointConfig conf = env.getCheckpointConfig();
+        // 必须设置外存目录
+        cfg.setString(CHECKPOINTS_DIRECTORY_KEY, EXTERNAL_CHECK_STATE_DIR);
+        conf.enableExternalizedCheckpoints(DELETE_ON_CANCELLATION);
+        conf.setCheckpointingMode(EXACTLY_ONCE);
+        conf.setCheckpointInterval(5000L);
+        conf.setCheckpointTimeout(5 * 60 * 1000L);
 
         // State管理
         env.setStateBackend(new RocksDBStateBackend(CHECK_STATE_PATH));
@@ -92,6 +104,8 @@ public class WordCountStatistic {
         dss.filter(StringUtils::isNotEmpty).name("filter-stream").returns(String.class)
            .map(text -> StringUtils.split(text, " ")).name("split-stream").returns(String[].class)
            .flatMap(new TransferWord()).name("word-stream")
+           .keyBy(tuple -> tuple.f0)
+           .sum(1)
            .addSink(new PrintSinkFunction<>()).name("word-print");
 
         // StreamEnvironment
