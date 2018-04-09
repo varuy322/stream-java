@@ -1,6 +1,7 @@
 package com.sdu.stream.storm;
 
 
+import com.sdu.stream.storm.node.RTDStandardExecuteBolt;
 import com.sdu.stream.storm.utils.JedisUtils;
 import com.sdu.stream.storm.utils.RTDConf;
 import org.apache.storm.Config;
@@ -18,7 +19,16 @@ import static org.apache.storm.Config.*;
 public class RTDCollectorJob {
 
     public static void main(String[] args) {
+
         TopologyBuilder builder = new TopologyBuilder();
+
+        // 数据源(根据配置动态构建)
+        builder.setSpout("RTD_SPOUT", null);
+        // 数据源标准化
+        builder.setBolt("RTD_STANDARD_BOLT", new RTDStandardExecuteBolt())
+               .shuffleGrouping("RTD_SPOUT");
+        // 数据聚合操作
+
 
         Config conf = new Config();
 

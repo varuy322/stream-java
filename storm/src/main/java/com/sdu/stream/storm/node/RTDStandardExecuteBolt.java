@@ -7,6 +7,7 @@ import org.apache.storm.topology.OutputFieldsDeclarer;
 import org.apache.storm.topology.base.BaseRichBolt;
 import org.apache.storm.tuple.Tuple;
 
+import java.util.List;
 import java.util.Map;
 
 import static com.sdu.stream.storm.utils.JsonUtils.fromJson;
@@ -35,6 +36,7 @@ public class RTDStandardExecuteBolt extends BaseRichBolt  {
         String record = input.getStringByField("record");
 
         // 根据JsonPath配置提取数据
+        _collector.emit(RTD_STANDARD_STREAM, input, null);
     }
 
     @Override
