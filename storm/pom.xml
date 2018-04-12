@@ -13,11 +13,17 @@
 
     <properties>
         <storm.version>1.2.1</storm.version>
+        <thrift.versiion>0.9.3</thrift.versiion>
         <kafka.version>0.10.0.0</kafka.version>
         <json.path.version>2.4.0</json.path.version>
     </properties>
 
     <dependencies>
+        <dependency>
+            <groupId>org.apache.thrift</groupId>
+            <artifactId>libthrift</artifactId>
+        </dependency>
+
         <dependency>
             <groupId>org.apache.storm</groupId>
             <artifactId>storm-core</artifactId>
@@ -41,6 +47,12 @@
 
     <dependencyManagement>
         <dependencies>
+            <dependency>
+                <groupId>org.apache.thrift</groupId>
+                <artifactId>libthrift</artifactId>
+                <version>${thrift.versiion}</version>
+            </dependency>
+
             <dependency>
                 <groupId>org.apache.storm</groupId>
                 <artifactId>storm-core</artifactId>
