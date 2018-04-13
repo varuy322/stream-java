@@ -19,7 +19,7 @@ import java.util.Map;
  * */
 public class RTDSchemaCheckSpout implements IRichSpout {
 
-    public static final String RTD_SCHEMA_STREAM_ID = "$RTDSchemaStream";
+    private static final String RTD_SCHEMA_STREAM_ID = "$RTDSchemaStream";
 
     public static final String RTD_SCHEMA_CHECK_INTERVAL = "rtd.schema.check.interval";
 
@@ -38,7 +38,7 @@ public class RTDSchemaCheckSpout implements IRichSpout {
     @SuppressWarnings("unchecked")
     @Override
     public void open(Map conf, TopologyContext context, SpoutOutputCollector collector) {
-        this.schemaCheckInterval = (long) conf.getOrDefault(RTD_SCHEMA_CHECK_INTERVAL, 180000L);
+        this.schemaCheckInterval = ((Number) conf.getOrDefault(RTD_SCHEMA_CHECK_INTERVAL, 180000L)).longValue();
 
         this.collector = collector;
     }
