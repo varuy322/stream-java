@@ -13,7 +13,7 @@ import static com.sdu.stream.storm.node.spout.RTDSchemaCheckSpout.isSchemaCheckS
  *
  * @author hanhan.zhang
  * */
-public abstract class RTDBaseExecutorBolt<K, V> extends BaseStatefulBolt<RedisKeyValueState<K, V>> {
+public abstract class RTDBaseStatefulBolt<K, V> extends BaseStatefulBolt<RedisKeyValueState<K, V>> implements IRTDSchemaBolt {
 
     @Override
     public void execute(Tuple input) {
@@ -27,7 +27,4 @@ public abstract class RTDBaseExecutorBolt<K, V> extends BaseStatefulBolt<RedisKe
         }
     }
 
-    public abstract void schemaUpdate(int version, String schemaJson);
-
-    public abstract void executeRTD(Tuple tuple);
 }
