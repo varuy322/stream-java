@@ -12,6 +12,8 @@
         <module>flink</module>
         <module>spark</module>
         <module>storm</module>
+        <module>storm/storm-client</module>
+        <module>storm/storm-dynamicJob</module>
     </modules>
 
     <properties>
