@@ -1,7 +1,6 @@
 package com.sdu.stream.storm;
 
 
-import com.sdu.stream.storm.node.RTDStandardExecuteBolt;
 import com.sdu.stream.storm.utils.JedisUtils;
 import com.sdu.stream.storm.utils.RTDConf;
 import org.apache.storm.Config;

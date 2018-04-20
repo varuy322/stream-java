@@ -6,11 +6,13 @@ import com.sdu.stream.storm.utils.ColumnType;
 import java.util.Map;
 
 /**
+ * Topic Json数据解析配置
+ *
  * @author hanhan.zhang
  * */
 public class JSONSchema implements Schema {
 
-    private String schemaName;
+    private String topic;
 
     // key: 列名, value: json path
     private Map<String, String> jsonConf;
@@ -18,8 +20,8 @@ public class JSONSchema implements Schema {
     // key: 列名, value: 类型
     private Map<String, ColumnType> fieldType;
 
-    public JSONSchema(String schemaName, Map<String, String> jsonConf) {
-        this.schemaName = schemaName;
+    public JSONSchema(String topic, Map<String, String> jsonConf) {
+        this.topic = topic;
         this.jsonConf = jsonConf;
         this.fieldType = Maps.newHashMap();
         for (Map.Entry<String, String> entry : this.jsonConf.entrySet()) {
@@ -27,8 +29,8 @@ public class JSONSchema implements Schema {
         }
     }
 
-    public JSONSchema(String schemaName, Map<String, String> jsonConf, Map<String, ColumnType> fieldType) {
-        this.schemaName = schemaName;
+    public JSONSchema(String topic, Map<String, String> jsonConf, Map<String, ColumnType> fieldType) {
+        this.topic = topic;
         this.jsonConf = jsonConf;
         this.fieldType = fieldType;
     }
@@ -47,6 +49,6 @@ public class JSONSchema implements Schema {
 
     @Override
     public String schemaName() {
-        return this.schemaName;
+        return this.topic;
     }
 }

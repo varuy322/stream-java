@@ -23,7 +23,7 @@ public abstract class RTDBaseStatefulBolt<K, V> extends BaseStatefulBolt<RedisKe
             String schemaJson = input.getStringByField(RTD_SCHEMA_CONTENT);
             schemaUpdate(version, schemaJson);
         } else {
-            executeRTD(input);
+            executeBySchema(input);
         }
     }
 

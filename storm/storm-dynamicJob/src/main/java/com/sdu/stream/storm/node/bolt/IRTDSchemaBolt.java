@@ -6,9 +6,11 @@ public interface IRTDSchemaBolt {
 
     String RTD_SCHEMA_CONF = "RTDSchemaConf";
 
+    /**schema update with version*/
     void schemaUpdate(int version, String schemaJson);
 
-    void executeRTD(Tuple tuple);
+    /**process tuple according schema*/
+    void executeBySchema(Tuple tuple);
 
 }
 

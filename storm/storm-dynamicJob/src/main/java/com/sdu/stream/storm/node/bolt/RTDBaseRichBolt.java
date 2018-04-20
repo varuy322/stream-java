@@ -15,7 +15,7 @@ public abstract class RTDBaseRichBolt extends BaseRichBolt implements IRTDSchema
             int version = input.getIntegerByField(RTD_SCHEMA_VERSION);
             schemaUpdate(version, schemaJson);
         } else {
-            executeRTD(input);
+            executeBySchema(input);
         }
     }
 }
