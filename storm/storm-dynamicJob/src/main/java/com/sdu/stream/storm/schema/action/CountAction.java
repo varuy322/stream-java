@@ -1,5 +1,7 @@
 package com.sdu.stream.storm.schema.action;
 
+import com.sdu.stream.storm.utils.Quota;
+
 import java.util.List;
 
 /**
@@ -13,17 +15,17 @@ public class CountAction implements Action {
 
     private String topic;
 
-    private List<String> fields;
+    private List<Quota> quotas;
 
     private int thresholdMs;
 
-    public CountAction(String topic, List<String> fields) {
-        this(topic, fields, THRESHOLD_MS);
+    public CountAction(String topic, List<Quota> quotas) {
+        this(topic, quotas, THRESHOLD_MS);
     }
 
-    public CountAction(String topic, List<String> fields, int thresholdMs) {
+    public CountAction(String topic, List<Quota> quotas, int thresholdMs) {
         this.topic = topic;
-        this.fields = fields;
+        this.quotas = quotas;
         this.thresholdMs = thresholdMs;
     }
 
@@ -31,8 +33,8 @@ public class CountAction implements Action {
         return topic;
     }
 
-    public List<String> getFields() {
-        return fields;
+    public List<Quota> getQuotas() {
+        return quotas;
     }
 
     public int getThresholdMs() {

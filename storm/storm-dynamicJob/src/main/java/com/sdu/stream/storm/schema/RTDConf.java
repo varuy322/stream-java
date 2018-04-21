@@ -1,6 +1,7 @@
 package com.sdu.stream.storm.schema;
 
-import java.util.List;
+import com.sdu.stream.storm.utils.RTDSchemaException;
+
 import java.util.Map;
 
 /**
@@ -14,9 +15,9 @@ public class RTDConf {
 
     private Map<String, JSONSchema> topicJsonSchemas;
 
-    private List<RTDActionSchema> actionSchemas;
+    private Map<ActionSchemaType, RTDActionSchema<?>> actionSchemas;
 
-    public RTDConf(int version, Map<String, JSONSchema> topicJsonSchemas, List<RTDActionSchema> actionSchemas) {
+    public RTDConf(int version, Map<String, JSONSchema> topicJsonSchemas, Map<ActionSchemaType, RTDActionSchema<?>> actionSchemas) {
         this.version = version;
         this.topicJsonSchemas = topicJsonSchemas;
         this.actionSchemas = actionSchemas;
@@ -30,7 +31,15 @@ public class RTDConf {
         return topicJsonSchemas;
     }
 
-    public List<RTDActionSchema> getActionSchemas() {
-        return actionSchemas;
+    @SuppressWarnings("unchecked")
+    public <T> T getRTDActionSchema(ActionSchemaType type) {
+        if (actionSchemas == null || actionSchemas.isEmpty()) {
+            throw new RTDSchemaException("RTD action schema empty !!!");
+        }
+        RTDActionSchema<?> actionSchema = actionSchemas.get(type);
+        if (actionSchema == null) {
+            throw new RTDSchemaException("RTD action schema empty, type: " + type);
+        }
+        return (T) actionSchema;
     }
 }

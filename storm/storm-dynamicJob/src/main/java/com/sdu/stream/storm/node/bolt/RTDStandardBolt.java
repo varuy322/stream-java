@@ -35,7 +35,6 @@ public class RTDStandardBolt extends RTDBaseRichBolt {
 
     private String topic;
 
-//    private AtomicReference<JSONSchema> standardSchema = new AtomicReference<>();
     private transient DataParser<String> dataParser;
 
     public RTDStandardBolt(String topic) {
