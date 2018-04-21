@@ -36,10 +36,6 @@ public class RTDConf {
         if (actionSchemas == null || actionSchemas.isEmpty()) {
             throw new RTDSchemaException("RTD action schema empty !!!");
         }
-        RTDActionSchema<?> actionSchema = actionSchemas.get(type);
-        if (actionSchema == null) {
-            throw new RTDSchemaException("RTD action schema empty, type: " + type);
-        }
-        return (T) actionSchema;
+        return (T) actionSchemas.get(type);
     }
 }

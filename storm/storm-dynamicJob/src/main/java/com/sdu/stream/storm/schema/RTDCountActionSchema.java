@@ -5,6 +5,8 @@ import com.sdu.stream.storm.schema.action.CountAction;
 import java.util.Map;
 import java.util.Set;
 
+import static java.util.Collections.emptySet;
+
 /**
  *
  * @author hanhan.zhang
@@ -19,11 +21,15 @@ public class RTDCountActionSchema implements RTDActionSchema<CountAction> {
 
     @Override
     public Set<String> actionTopics() {
+        if (countActions == null) {
+            return emptySet();
+        }
         return countActions.keySet();
     }
 
     @Override
     public CountAction getTopicAction(String topic) {
+        assert countActions != null;
         return countActions.get(topic);
     }
 }

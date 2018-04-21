@@ -100,6 +100,6 @@ public class RTDStandardBolt extends RTDBaseRichBolt {
 
     @Override
     public void declareOutputFields(OutputFieldsDeclarer declarer) {
-        declarer.declareStream("topic", new Fields("topic", "standard"));
+        declarer.declareStream(topic, new Fields("topic", "dataRow"));
     }
 }
