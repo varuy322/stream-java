@@ -1,19 +1,17 @@
 package com.sdu.stream.storm.node.bolt;
 
-import org.apache.storm.redis.state.RedisKeyValueState;
+import org.apache.storm.state.State;
 import org.apache.storm.topology.base.BaseStatefulBolt;
 import org.apache.storm.tuple.Tuple;
 
-import static com.sdu.stream.storm.node.spout.RTDSchemaCheckSpout.RTD_SCHEMA_CONTENT;
-import static com.sdu.stream.storm.node.spout.RTDSchemaCheckSpout.RTD_SCHEMA_VERSION;
-import static com.sdu.stream.storm.node.spout.RTDSchemaCheckSpout.isSchemaCheckStream;
+import static com.sdu.stream.storm.node.spout.RTDSchemaCheckSpout.*;
 
 /**
  * Bolt should record self schema message
  *
  * @author hanhan.zhang
  * */
-public abstract class RTDBaseStatefulBolt<K, V> extends BaseStatefulBolt<RedisKeyValueState<K, V>> implements IRTDSchemaBolt {
+public abstract class RTDBaseStatefulBolt<T extends State> extends BaseStatefulBolt<T> implements IRTDSchemaBolt {
 
     @Override
     public void execute(Tuple input) {

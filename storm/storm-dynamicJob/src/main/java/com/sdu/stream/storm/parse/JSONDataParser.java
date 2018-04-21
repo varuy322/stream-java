@@ -19,11 +19,11 @@ public class JSONDataParser implements DataParser<String> {
         conf = Configuration.defaultConfiguration();
     }
 
-    private String stream;
+    private String topic;
     private JSONSchema schema;
 
-    public JSONDataParser(String stream, JSONSchema schema) {
-        this.stream = stream;
+    public JSONDataParser(String topic, JSONSchema schema) {
+        this.topic = topic;
         this.schema = schema;
     }
 
@@ -54,7 +54,7 @@ public class JSONDataParser implements DataParser<String> {
             ++index;
         }
 
-        return DataRow.of(stream, columnNames, columnTypes, columnValues);
+        return DataRow.of(topic, columnNames, columnTypes, columnValues);
     }
 
     public static void main(String[] args) {

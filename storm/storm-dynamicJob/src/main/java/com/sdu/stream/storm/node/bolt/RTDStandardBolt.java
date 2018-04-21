@@ -1,8 +1,12 @@
 package com.sdu.stream.storm.node.bolt;
 
-import com.sdu.stream.storm.schema.JSONSchema;
+import com.google.common.collect.Lists;
+import com.sdu.stream.storm.parse.DataParser;
+import com.sdu.stream.storm.parse.DataParserFactory;
+import com.sdu.stream.storm.parse.DataRow;
 import com.sdu.stream.storm.schema.RTDConf;
 import com.sdu.stream.storm.utils.JsonUtils;
+import com.sdu.stream.storm.utils.RTDParseException;
 import org.apache.storm.task.OutputCollector;
 import org.apache.storm.task.TopologyContext;
 import org.apache.storm.topology.OutputFieldsDeclarer;
@@ -12,11 +16,12 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.Map;
-import java.util.concurrent.atomic.AtomicReference;
 
 import static com.google.common.base.Strings.isNullOrEmpty;
+import static com.sdu.stream.storm.utils.JsonUtils.toJson;
 
 /**
+ * 订阅"Topic"数据流并标准化
  *
  * @author hanhan.zhang
  * */
@@ -30,7 +35,8 @@ public class RTDStandardBolt extends RTDBaseRichBolt {
 
     private String topic;
 
-    private AtomicReference<JSONSchema> standardSchema = new AtomicReference<>();
+//    private AtomicReference<JSONSchema> standardSchema = new AtomicReference<>();
+    private transient DataParser<String> dataParser;
 
     public RTDStandardBolt(String topic) {
         this.topic = topic;
@@ -38,11 +44,7 @@ public class RTDStandardBolt extends RTDBaseRichBolt {
 
     @Override
     public void prepare(Map stormConf, TopologyContext context, OutputCollector collector) {
-        String schemaJson = (String) stormConf.get(RTD_SCHEMA_CONF);
-        if (isNullOrEmpty(schemaJson)) {
-            throw new IllegalArgumentException("Topology RTDConf Empty !!!");
-        }
-        RTDConf conf = JsonUtils.fromJson(schemaJson, RTDConf.class);
+        RTDConf conf = checkAndGetRTDConf(stormConf);
         if (conf == null || conf.getTopicJsonSchemas() == null || conf.getTopicJsonSchemas().isEmpty()) {
             throw new IllegalArgumentException("Topology Topic Parse Schema Empty !!!");
         }
@@ -52,7 +54,7 @@ public class RTDStandardBolt extends RTDBaseRichBolt {
         }
 
         this.version = conf.getVersion();
-        this.standardSchema.set(conf.getTopicJsonSchemas().get(topic));
+        this.dataParser = DataParserFactory.createDataParser(topic, conf.getTopicJsonSchemas().get(topic));
         this.collector = collector;
     }
 
@@ -69,13 +71,32 @@ public class RTDStandardBolt extends RTDBaseRichBolt {
         }
         RTDConf conf = JsonUtils.fromJson(schemaJson, RTDConf.class);
         if (conf != null && conf.getTopicJsonSchemas() != null && conf.getTopicJsonSchemas().get(topic) != null) {
-            this.standardSchema.set(conf.getTopicJsonSchemas().get(topic));
+            this.dataParser = DataParserFactory.createDataParser(topic, conf.getTopicJsonSchemas().get(topic));
         }
     }
 
     @Override
     public void executeBySchema(Tuple tuple) {
-        
+        String streamId = tuple.getSourceStreamId();
+        if (streamId.equals(topic)) {
+            String json = tuple.getStringByField("record");
+            if (isNullOrEmpty(json)) {
+                // TODO: 监控
+                collector.ack(tuple);
+                return;
+            }
+
+            // 数据流标准化
+            try {
+                DataRow newTuple = dataParser.parse(json);
+                collector.emit(topic, tuple, Lists.newArrayList(topic, toJson(newTuple)));
+                collector.ack(tuple);
+            } catch (RTDParseException e) {
+                // TODO: 监控
+                LOGGER.error("RTD standard data failure, origin data: {}", json, e);
+                collector.ack(tuple);
+            }
+        }
     }
 
     @Override

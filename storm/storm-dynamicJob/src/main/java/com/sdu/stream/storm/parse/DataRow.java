@@ -4,7 +4,7 @@ import com.sdu.stream.storm.utils.ColumnType;
 
 public class DataRow {
 
-    private String stream;
+    private String topic;
 
     private String[] columnNames;
 
@@ -12,11 +12,27 @@ public class DataRow {
 
     private Object[] columnValues;
 
-    private DataRow(String stream, String[] columnNames, ColumnType[] columnTypes, Object[] columnValues) {
-        this.stream = stream;
+    private DataRow(String topic, String[] columnNames, ColumnType[] columnTypes, Object[] columnValues) {
+        this.topic = topic;
         this.columnNames = columnNames;
         this.columnTypes = columnTypes;
         this.columnValues = columnValues;
+    }
+
+    public String getTopic() {
+        return topic;
+    }
+
+    public String[] getColumnNames() {
+        return columnNames;
+    }
+
+    public ColumnType[] getColumnTypes() {
+        return columnTypes;
+    }
+
+    public Object[] getColumnValues() {
+        return columnValues;
     }
 
     public static DataRow of(String stream, String[] columnNames, ColumnType[] columnTypes, Object[] columnValues) {
