@@ -4,7 +4,7 @@ import org.apache.storm.tuple.Fields;
 
 public class RTDConf {
     // 实时数据Schema
-    public static final String RTD_SCHEMA_CONF = "RTD_SCHEMA_CONF";
+    public static final String RTD_SCHEMA_CONF = "RTD_DOMAIN_SCHEMA";
 
     // 标准化流
     public static final String RTD_STANDARD_STREAM = "RTD_STANDARD_STREAM";

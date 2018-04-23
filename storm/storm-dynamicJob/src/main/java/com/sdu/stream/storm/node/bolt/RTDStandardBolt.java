@@ -1,10 +1,11 @@
 package com.sdu.stream.storm.node.bolt;
 
-import com.google.common.collect.Lists;
-import com.sdu.stream.storm.parse.DataParser;
+import com.google.common.collect.Maps;
 import com.sdu.stream.storm.parse.DataParserFactory;
 import com.sdu.stream.storm.parse.DataRow;
-import com.sdu.stream.storm.schema.RTDConf;
+import com.sdu.stream.storm.parse.JSONDataParser;
+import com.sdu.stream.storm.schema.RTDDomainSchema;
+import com.sdu.stream.storm.schema.RTDDomainSource;
 import com.sdu.stream.storm.utils.JsonUtils;
 import com.sdu.stream.storm.utils.RTDParseException;
 import org.apache.storm.task.OutputCollector;
@@ -15,10 +16,13 @@ import org.apache.storm.tuple.Tuple;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
-import static com.google.common.base.Strings.isNullOrEmpty;
+import static com.sdu.stream.storm.node.bolt.IRTDSchemaBolt.RTDActionType.StandardType;
 import static com.sdu.stream.storm.utils.JsonUtils.toJson;
+import static org.apache.storm.shade.com.google.common.collect.Lists.newArrayList;
 
 /**
  * 订阅"Topic"数据流并标准化
@@ -31,29 +35,25 @@ public class RTDStandardBolt extends RTDBaseRichBolt {
 
     private OutputCollector collector;
 
+    private Set<String> topics;
+
     private transient int version;
+    private transient Map<String, JSONDataParser> dataParsers;
 
-    private String topic;
-
-    private transient DataParser<String> dataParser;
-
-    public RTDStandardBolt(String topic) {
-        this.topic = topic;
+    public RTDStandardBolt(Set<String> topics) {
+        this.topics = topics;
     }
 
     @Override
     public void prepare(Map stormConf, TopologyContext context, OutputCollector collector) {
-        RTDConf conf = checkAndGetRTDConf(stormConf);
-        if (conf == null || conf.getTopicJsonSchemas() == null || conf.getTopicJsonSchemas().isEmpty()) {
-            throw new IllegalArgumentException("Topology Topic Parse Schema Empty !!!");
+        RTDDomainSchema schema = checkAndGetRTDConf(stormConf);
+        if (schema == null || schema.getSource() == null || schema.getSource().isEmpty()) {
+            throw new IllegalArgumentException("RTD standard data source empty !!!");
         }
 
-        if (conf.getTopicJsonSchemas().get(topic) == null) {
-            throw new IllegalArgumentException("Topology Topic Parse Schema Empty, Topic: " + topic);
-        }
+        this.version = schema.getVersion();
+        this.dataParsers = updateStandardScheme(schema);
 
-        this.version = conf.getVersion();
-        this.dataParser = DataParserFactory.createDataParser(topic, conf.getTopicJsonSchemas().get(topic));
         this.collector = collector;
     }
 
@@ -68,38 +68,51 @@ public class RTDStandardBolt extends RTDBaseRichBolt {
             LOGGER.debug("Topology RTD conf empty !!!");
             return;
         }
-        RTDConf conf = JsonUtils.fromJson(schemaJson, RTDConf.class);
-        if (conf != null && conf.getTopicJsonSchemas() != null && conf.getTopicJsonSchemas().get(topic) != null) {
-            this.dataParser = DataParserFactory.createDataParser(topic, conf.getTopicJsonSchemas().get(topic));
+        RTDDomainSchema schema = JsonUtils.fromJson(schemaJson, RTDDomainSchema.class);
+        if (schema == null || schema.getSource() == null || schema.getSource().isEmpty()) {
+            // TODO: 报警
+            return;
         }
+        this.version = version;
+        this.dataParsers = updateStandardScheme(schema);
     }
 
     @Override
     public void executeBySchema(Tuple tuple) {
         String streamId = tuple.getSourceStreamId();
-        if (streamId.equals(topic)) {
-            String json = tuple.getStringByField("record");
-            if (isNullOrEmpty(json)) {
-                // TODO: 监控
-                collector.ack(tuple);
-                return;
-            }
-
-            // 数据流标准化
-            try {
-                DataRow newTuple = dataParser.parse(json);
-                collector.emit(topic, tuple, Lists.newArrayList(topic, toJson(newTuple)));
-                collector.ack(tuple);
-            } catch (RTDParseException e) {
-                // TODO: 监控
-                LOGGER.error("RTD standard data failure, origin data: {}", json, e);
-                collector.ack(tuple);
-            }
+        JSONDataParser dataParser = this.dataParsers.get(streamId);
+        if (dataParser == null) {
+            LOGGER.warn("Standard bolt receive unknown topic: {}", streamId);
+            return;
+        }
+        try {
+            DataRow dataRow = dataParser.parse(tuple.getStringByField("record"));
+            collector.emit(streamId, tuple, newArrayList(streamId, StandardType, toJson(dataRow)));
+            collector.ack(tuple);
+        } catch (RTDParseException e) {
+            // TODO: 报警
+            collector.ack(tuple);
         }
     }
 
     @Override
     public void declareOutputFields(OutputFieldsDeclarer declarer) {
-        declarer.declareStream(topic, new Fields("topic", "dataRow"));
+        assert topics != null && topics.size() > 0;
+        for (String topic : topics) {
+            declarer.declareStream(topic, new Fields(RTD_ACTION_TOPIC, RTD_ACTION_TYPE, RTD_ACTION_RESULT));
+        }
+    }
+
+    private Map<String, JSONDataParser> updateStandardScheme(RTDDomainSchema schema) {
+        Map<String, JSONDataParser> dataParsers = Maps.newHashMap();
+        List<RTDDomainSource> domainSources = schema.getSource();
+        for (RTDDomainSource source : domainSources) {
+            if (!topics.contains(source.getTopic())) {
+                continue;
+            }
+            JSONDataParser dataParser = DataParserFactory.createJsonDataParser(source.getTopic(), source);
+            dataParsers.put(source.getTopic(), dataParser);
+        }
+        return dataParsers;
     }
 }

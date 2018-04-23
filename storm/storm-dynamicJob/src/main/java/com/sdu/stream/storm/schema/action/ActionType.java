@@ -5,6 +5,6 @@ package com.sdu.stream.storm.schema.action;
  * */
 public enum ActionType {
 
-    COUNT, AGGREGATE, JOIN, EL
+    Sum, WindowCount, Aggregate, Join
 
 }

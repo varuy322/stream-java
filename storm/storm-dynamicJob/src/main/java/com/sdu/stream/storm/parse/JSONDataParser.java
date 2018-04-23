@@ -1,9 +1,10 @@
 package com.sdu.stream.storm.parse;
 
+import com.google.common.collect.Maps;
 import com.jayway.jsonpath.Configuration;
 import com.jayway.jsonpath.JsonPath;
 import com.jayway.jsonpath.ReadContext;
-import com.sdu.stream.storm.schema.JSONSchema;
+import com.sdu.stream.storm.schema.RTDDomainSource;
 import com.sdu.stream.storm.utils.ColumnType;
 import com.sdu.stream.storm.utils.RTDParseException;
 
@@ -20,11 +21,11 @@ public class JSONDataParser implements DataParser<String> {
     }
 
     private String topic;
-    private JSONSchema schema;
+    private RTDDomainSource source;
 
-    public JSONDataParser(String topic, JSONSchema schema) {
+    private JSONDataParser(String topic, RTDDomainSource source) {
         this.topic = topic;
-        this.schema = schema;
+        this.source = source;
     }
 
     @Override
@@ -34,27 +35,27 @@ public class JSONDataParser implements DataParser<String> {
         }
         ReadContext ctx = JsonPath.using(conf).parse(json);
 
-        String[] columnNames = new String[schema.schemaLength()];
-        ColumnType[] columnTypes = new ColumnType[schema.schemaLength()];
-        Object[] columnValues = new Object[schema.schemaLength()];
-
-        Map<String, String> jsonConf = schema.schemaJSONConf();
-        Map<String, ColumnType> schemaType = schema.schemaType();
-        int index = 0;
-        for (Map.Entry<String, String> entry : jsonConf.entrySet()) {
-            String columnName = entry.getKey();
-            String jsonPath = entry.getValue();
-            ColumnType columnType = schemaType.get(columnName);
-            Object columnValue = ctx.read(jsonPath, columnType.columnType());
-
-            columnNames[index] = columnName;
-            columnTypes[index] = columnType;
-            columnValues[index] = columnValue;
-
-            ++index;
+        Map<String, RTDDomainSource.JsonSchema> schemas = source.getStandard();
+        if (schemas == null || schemas.isEmpty()) {
+            throw new RTDParseException("Json schema empty !!!");
         }
 
-        return DataRow.of(topic, columnNames, columnTypes, columnValues);
+        Map<String, DataRow.ColumnSchema> columns = Maps.newHashMap();
+        for (Map.Entry<String, RTDDomainSource.JsonSchema> entry : schemas.entrySet()) {
+            String columnName = entry.getKey();
+            RTDDomainSource.JsonSchema schema = entry.getValue();
+            ColumnType type = ColumnType.getColumnType(schema.getType());
+            Object columnValue = ctx.read(schema.getPath(), type.columnType());
+
+            DataRow.ColumnSchema columnSchema = new DataRow.ColumnSchema(columnName, type, columnValue);
+            columns.put(columnName, columnSchema);
+        }
+
+        return DataRow.of(topic, columns);
+    }
+
+    public static JSONDataParser of(String topic, RTDDomainSource source) {
+        return new JSONDataParser(topic, source);
     }
 
     public static void main(String[] args) {

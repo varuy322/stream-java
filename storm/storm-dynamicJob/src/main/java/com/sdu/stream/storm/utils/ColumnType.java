@@ -16,4 +16,18 @@ public enum ColumnType {
     public Class<?> columnType() {
         return cls;
     }
+
+    public String getName() {
+        return name;
+    }
+
+    public static ColumnType getColumnType(String name) {
+        ColumnType[] types = ColumnType.values();
+        for (ColumnType type : types) {
+            if (type.getName().equals(name)) {
+                return type;
+            }
+        }
+        throw new IllegalArgumentException("Can't find column type, type: " + name);
+    }
 }

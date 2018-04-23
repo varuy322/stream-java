@@ -1,68 +1,46 @@
 package com.sdu.stream.storm.schema.action;
 
-import com.sdu.stream.storm.parse.DataRow;
-import com.sdu.stream.storm.utils.Quota;
-import com.sdu.stream.storm.utils.RTDCalculateException;
-import org.apache.storm.state.KeyValueState;
-import org.apache.storm.task.TopologyContext;
-
-import java.util.List;
-import java.util.Map;
-
 /**
  *
  * @author hanhan.zhang
  * */
-public class Aggregator implements Action<String, Object> {
-
-    private static final int DEFAULT_AGGREGATE_LENGTH = 30;
-
-    private int length;
+public class Aggregator implements Action {
 
     private String topic;
+    private String field;
+    private int threshold;
+    private String alias;
 
-    private List<Quota> quotas;
-
-    public Aggregator(String topic, List<Quota> quotas) {
-        this(topic, quotas, DEFAULT_AGGREGATE_LENGTH);
-    }
-
-    public Aggregator(String topic, List<Quota> quotas, int length) {
-        this.length = length;
+    private Aggregator(String topic, String field, int threshold, String alias) {
         this.topic = topic;
-        this.quotas = quotas;
-    }
-
-    public int getLength() {
-        return length;
+        this.field = field;
+        this.threshold = threshold;
+        this.alias = alias;
     }
 
     public String getTopic() {
         return topic;
     }
 
-    public List<Quota> getQuotas() {
-        return quotas;
+    public String getField() {
+        return field;
     }
 
-    @Override
-    public void prepare(Map stormConf, TopologyContext context) {
-        
+    public int getThreshold() {
+        return threshold;
     }
 
-    @Override
-    public void setState(KeyValueState<String, Object> keyValueState) {
-
-    }
-
-    @Override
-    public void execute(DataRow dataRow) throws RTDCalculateException {
-
+    public String getAlias() {
+        return alias;
     }
 
     @Override
     public ActionType actionType() {
-        return ActionType.AGGREGATE;
+        return ActionType.Aggregate;
+    }
+
+    public static Aggregator of(String topic, String field, int threshold, String alias) {
+        return new Aggregator(topic, field, threshold, alias);
     }
 
 }
