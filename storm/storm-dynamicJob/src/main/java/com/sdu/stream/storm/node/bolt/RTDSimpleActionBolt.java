@@ -1,13 +1,14 @@
 package com.sdu.stream.storm.node.bolt;
 
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
+import com.sdu.stream.storm.parse.DataRow;
 import com.sdu.stream.storm.schema.RTDAggregateActionSchema;
 import com.sdu.stream.storm.schema.RTDAviatorActionSchema;
 import com.sdu.stream.storm.schema.RTDConf;
 import com.sdu.stream.storm.schema.RTDCountActionSchema;
-import com.sdu.stream.storm.schema.action.AggregateAction;
-import com.sdu.stream.storm.schema.action.AviatorAction;
-import com.sdu.stream.storm.schema.action.CountAction;
+import com.sdu.stream.storm.schema.action.Aggregator;
+import com.sdu.stream.storm.schema.action.Aviator;
+import com.sdu.stream.storm.schema.action.Counter;
 import com.sdu.stream.storm.utils.JsonUtils;
 import org.apache.storm.redis.state.RedisKeyValueState;
 import org.apache.storm.task.OutputCollector;
@@ -24,6 +25,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ThreadFactory;
 
 import static com.sdu.stream.storm.schema.ActionSchemaType.*;
+import static java.util.concurrent.TimeUnit.MILLISECONDS;
 
 /**
  * 订阅"Topic"数据流, 数据计算:
@@ -40,15 +42,17 @@ public class RTDSimpleActionBolt extends RTDBaseStatefulBolt<RedisKeyValueState<
 
     private static final Logger LOGGER = LoggerFactory.getLogger(RTDSimpleActionBolt.class);
 
+    public static final String RTD_FLUSH_INTERVAL = "rtd.flush.interval";
+
     private String topic;
 
     private OutputCollector collector;
 
     private final Object versionLock = new Object();
     private int version;
-    private CountAction countAction;
-    private AggregateAction aggregateAction;
-    private AviatorAction aviatorAction;
+    private Counter counter;
+    private Aggregator aggregator;
+    private Aviator aviator;
 
     private RedisKeyValueState<String, Number> countState;
 
@@ -58,6 +62,7 @@ public class RTDSimpleActionBolt extends RTDBaseStatefulBolt<RedisKeyValueState<
         this.topic = topic;
     }
 
+    @SuppressWarnings("unchecked")
     @Override
     public void prepare(Map stormConf, TopologyContext context, OutputCollector collector) {
         RTDConf conf = checkAndGetRTDConf(stormConf);
@@ -71,7 +76,9 @@ public class RTDSimpleActionBolt extends RTDBaseStatefulBolt<RedisKeyValueState<
                                                               // TODO: 监控
                                                           })
                                                           .build();
+        int interval = ((Number) stormConf.getOrDefault(RTD_FLUSH_INTERVAL, 60 * 1000)).intValue();
         this.scheduledExecutor = Executors.newSingleThreadScheduledExecutor(factory);
+        this.scheduledExecutor.scheduleWithFixedDelay(new FlushTask(), interval, interval, MILLISECONDS);
     }
 
     @Override
@@ -85,19 +92,30 @@ public class RTDSimpleActionBolt extends RTDBaseStatefulBolt<RedisKeyValueState<
             LOGGER.debug("RTD schema version already out of data, current version: {}", this.version);
             return;
         }
-
         RTDConf conf = JsonUtils.fromJson(schemaJson, RTDConf.class);
         updateAction(conf);
     }
 
     @Override
     public void executeBySchema(Tuple tuple) {
+        String topic = tuple.getStringByField("topic");
+        String dataRowJson = tuple.getStringByField("dataRow");
+        if (topic == null || !topic.equals(this.topic)) {
+            LOGGER.warn("Simple action bolt receive not subscribe topic: {}", topic);
+            return;
+        }
 
+        DataRow dataRow = JsonUtils.fromJson(dataRowJson, DataRow.class);
+        doInvokeCount(dataRow);
     }
 
     @Override
     public void declareOutputFields(OutputFieldsDeclarer declarer) {
         declarer.declareStream(topic, new Fields("topic", "dataRow"));
+    }
+
+    private void doInvokeCount(DataRow dataRow) {
+
     }
 
     private void updateAction(RTDConf conf) {
@@ -108,13 +126,13 @@ public class RTDSimpleActionBolt extends RTDBaseStatefulBolt<RedisKeyValueState<
         synchronized (versionLock) {
             this.version = conf.getVersion();
             if (countActionSchema != null) {
-                this.countAction = countActionSchema.getTopicAction(topic);
+                this.counter = countActionSchema.getTopicAction(topic);
             }
             if (aggregateActionSchema != null) {
-                this.aggregateAction = aggregateActionSchema.getTopicAction(topic);
+                this.aggregator = aggregateActionSchema.getTopicAction(topic);
             }
             if (aviatorActionSchema != null) {
-                this.aviatorAction = aviatorActionSchema.getTopicAction(topic);
+                this.aviator = aviatorActionSchema.getTopicAction(topic);
             }
         }
     }

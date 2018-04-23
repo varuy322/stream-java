@@ -1,6 +1,6 @@
 package com.sdu.stream.storm.schema;
 
-import com.sdu.stream.storm.schema.action.CountAction;
+import com.sdu.stream.storm.schema.action.Counter;
 
 import java.util.Map;
 import java.util.Set;
@@ -11,11 +11,11 @@ import static java.util.Collections.emptySet;
  *
  * @author hanhan.zhang
  * */
-public class RTDCountActionSchema implements RTDActionSchema<CountAction> {
+public class RTDCountActionSchema implements RTDActionSchema<Counter> {
 
-    private Map<String, CountAction> countActions;
+    private Map<String, Counter> countActions;
 
-    public RTDCountActionSchema(Map<String, CountAction> countActions) {
+    public RTDCountActionSchema(Map<String, Counter> countActions) {
         this.countActions = countActions;
     }
 
@@ -28,7 +28,7 @@ public class RTDCountActionSchema implements RTDActionSchema<CountAction> {
     }
 
     @Override
-    public CountAction getTopicAction(String topic) {
+    public Counter getTopicAction(String topic) {
         assert countActions != null;
         return countActions.get(topic);
     }

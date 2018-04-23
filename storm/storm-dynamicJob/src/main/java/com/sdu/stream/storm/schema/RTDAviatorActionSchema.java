@@ -1,17 +1,17 @@
 package com.sdu.stream.storm.schema;
 
-import com.sdu.stream.storm.schema.action.AviatorAction;
+import com.sdu.stream.storm.schema.action.Aviator;
 
 import java.util.Map;
 import java.util.Set;
 
 import static java.util.Collections.emptySet;
 
-public class RTDAviatorActionSchema implements RTDActionSchema<AviatorAction> {
+public class RTDAviatorActionSchema implements RTDActionSchema<Aviator> {
 
-    private Map<String, AviatorAction> aviatorActions;
+    private Map<String, Aviator> aviatorActions;
 
-    public RTDAviatorActionSchema(Map<String, AviatorAction> aviatorActions) {
+    public RTDAviatorActionSchema(Map<String, Aviator> aviatorActions) {
         this.aviatorActions = aviatorActions;
     }
 
@@ -24,7 +24,7 @@ public class RTDAviatorActionSchema implements RTDActionSchema<AviatorAction> {
     }
 
     @Override
-    public AviatorAction getTopicAction(String topic) {
+    public Aviator getTopicAction(String topic) {
         assert aviatorActions != null;
         return aviatorActions.get(topic);
     }

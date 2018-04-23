@@ -15,17 +15,17 @@ import java.util.Map;
 public class RTDSinkBolt extends RTDBaseRichBolt {
 
     @Override
+    public void prepare(Map stormConf, TopologyContext context, OutputCollector collector) {
+
+    }
+
+    @Override
     public void schemaUpdate(int version, String schemaJson) {
 
     }
 
     @Override
     public void executeBySchema(Tuple tuple) {
-
-    }
-
-    @Override
-    public void prepare(Map stormConf, TopologyContext context, OutputCollector collector) {
 
     }
 
