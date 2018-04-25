@@ -14,7 +14,15 @@ public class RTDDomainSchema {
 
     private int version;
 
-    /**存储主键*/
+    /**
+     * 存储主键:
+     *
+     * Sum/WindowCount: domainKey + field  ==> Domain
+     *
+     * Aggregate: domainKey + secondKey ==> Domain
+     *
+     * Join:
+     * */
     private String domainKey;
 
     /**数据源*/
@@ -42,7 +50,8 @@ public class RTDDomainSchema {
         return source;
     }
 
-    public Map<String, List<Action>> getOperation() {
-        return operation;
+    public List<Action> getOperation(String action) {
+        assert operation != null;
+        return this.operation.get(action);
     }
 }

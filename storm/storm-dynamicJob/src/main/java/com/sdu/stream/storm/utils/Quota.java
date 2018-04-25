@@ -1,30 +1,31 @@
 package com.sdu.stream.storm.utils;
 
-import java.util.List;
+import java.util.Map;
 
 public class Quota {
 
-    private String id;
+    private String topic;
 
-    private List<String> fields;
+    // key: 存储类型, value: 命名空间
+    private Map<StorageType, String> quotaStorageKeys;
 
-    private String alias;
-
-    public Quota(String id, List<String> fields, String alias) {
-        this.id = id;
-        this.fields = fields;
-        this.alias = alias;
+    public Quota(String topic) {
+        this.topic = topic;
     }
 
-    public String getId() {
-        return id;
+    public String getTopic() {
+        return topic;
     }
 
-    public List<String> getFields() {
-        return fields;
+    public Map<StorageType, String> getQuotaStorageKeys() {
+        return quotaStorageKeys;
     }
 
-    public String getAlias() {
-        return alias;
+    public void setQuotaStorageKeys(Map<StorageType, String> quotaStorageKeys) {
+        this.quotaStorageKeys = quotaStorageKeys;
+    }
+
+    public enum  StorageType {
+        HINCRBY
     }
 }

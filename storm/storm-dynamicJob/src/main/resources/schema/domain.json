@@ -62,57 +62,82 @@
       ]
     }
   ],
-  "operation": {
-    "Sum": [
-      {
-        "topic": "search_log",
-        "fields":[
-          "poiId"
+  "domains": [
+    {
+      "domain": "user_rt_count_quota",
+      "dimension": "userId",
+      "operations": {
+        "Sum": [
+          {
+            "topic": "search_log",
+            "fields":[
+              "poiId"
+            ],
+            "alias": "poi_search_sum"
+          },
+          {
+            "topic": "click_log",
+            "fields": [
+              "poiId"
+            ],
+            "alias": "poi_click_sum"
+          }
         ],
-        "alias": "poi_search_sum"
-      },
-      {
-        "topic": "click_log",
-        "fields": [
-          "poiId"
-        ],
-        "alias": "poi_click_sum"
+        "WindowCount": [
+          {
+            "topic": "search_log",
+            "fields": [
+              "poiId"
+            ],
+            "threshold": 5,
+            "alias": "poi_search_window_count"
+          },
+          {
+            "topic": "click_log",
+            "fields": [
+              "poiId"
+            ],
+            "threshold": 5,
+            "alias": "poi_click_window_count"
+          }
+        ]
       }
-    ],
-    "WindowCount": [
-      {
-        "topic": "search_log",
-        "fields": [
-          "poiId"
-        ],
-        "threshold": 5,
-        "alias": "poi_search_window_count"
-      },
-      {
-        "topic": "click_log",
-        "fields": [
-          "poiId"
-        ],
-        "threshold": 5,
-        "alias": "poi_click_window_count"
+    },
+    {
+      "domain": "user_rt_aggregate_quota",
+      "dimension": "userId",
+      "operations": {
+        "Aggregate": [
+          {
+            "aggregateKey": "cityId",
+            "aggregateDesc": [
+              {
+                "topic": "search_log",
+                "field": "poi",
+                "threshold": 10,
+                "alias": "user_search_poi"
+              },
+              {
+                "topic": "click_log",
+                "field": "poi",
+                "threshold": 10,
+                "alias": "user_click_poi"
+              }
+            ]
+          }
+        ]
       }
-    ],
-    "Aggregate": [
-      {
-        "topic": "search_log",
-        "field": "poi",
-        "threshold": 10,
-        "alias": "user_search_poi"
-      },
-      {
-        "topic": "click_log",
-        "field": "poi",
-        "threshold": 10,
-        "alias": "user_click_poi"
-      }
-    ],
-    "Join": {
+    },
+    {
+      "domain": "user_rt_join_quota",
+      "dimension": "userId",
+      "operations": {
+        "Join": [
+          {
 
+          }
+        ]
+      }
     }
-  }
+  ]
 }

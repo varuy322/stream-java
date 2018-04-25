@@ -8,11 +8,11 @@ import org.apache.storm.tuple.Tuple;
 import java.util.Map;
 
 /**
- * RTD数据流统计数据输出
+ * RTD Domain数据汇总输出
  *
  * @author hanhan.zhang
  * */
-public class RTDSinkBolt extends RTDBaseRichBolt {
+public class RTDDomainSinkBolt extends RTDBaseRichBolt {
 
     @Override
     public void prepare(Map stormConf, TopologyContext context, OutputCollector collector) {
