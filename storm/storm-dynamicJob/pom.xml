@@ -17,6 +17,7 @@
         <thrift.versiion>0.9.3</thrift.versiion>
         <kafka.version>0.10.0.0</kafka.version>
         <aviator.version>3.3.0</aviator.version>
+        <canal.version>1.0.25</canal.version>
         <json.path.version>2.4.0</json.path.version>
     </properties>
 
@@ -44,6 +45,15 @@
         <dependency>
             <groupId>com.jayway.jsonpath</groupId>
             <artifactId>json-path</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>com.alibaba.otter</groupId>
+            <artifactId>canal.client</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.alibaba.otter</groupId>
+            <artifactId>canal.parse</artifactId>
         </dependency>
 
         <!-- 表达式 -->
@@ -79,6 +89,7 @@
                 <version>${storm.version}</version>
             </dependency>
 
+            <!-- JSON数据解析 -->
             <dependency>
                 <groupId>com.jayway.jsonpath</groupId>
                 <artifactId>json-path</artifactId>
@@ -89,6 +100,25 @@
                         <artifactId>slf4j-api</artifactId>
                     </exclusion>
                 </exclusions>
+            </dependency>
+
+            <!-- MySQL BinLog解析(阿里巴巴) -->
+            <dependency>
+                <groupId>com.alibaba.otter</groupId>
+                <artifactId>canal.client</artifactId>
+                <version>${canal.version}</version>
+                <exclusions>
+                    <exclusion>
+                        <groupId>org.springframework</groupId>
+                        <artifactId>*</artifactId>
+                    </exclusion>
+                </exclusions>
+            </dependency>
+
+            <dependency>
+                <groupId>com.alibaba.otter</groupId>
+                <artifactId>canal.parse</artifactId>
+                <version>${canal.version}</version>
             </dependency>
 
             <dependency>

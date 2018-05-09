@@ -40,7 +40,7 @@ public class DataRow {
         private ColumnType type;
         private Object value;
 
-        public ColumnSchema(String name, ColumnType type, Object value) {
+        ColumnSchema(String name, ColumnType type, Object value) {
             this.name = name;
             this.type = type;
             this.value = value;
