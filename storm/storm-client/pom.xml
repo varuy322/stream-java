@@ -14,12 +14,18 @@
 
     <properties>
         <storm.version>1.2.1</storm.version>
+        <mapdb.version>3.0.5</mapdb.version>
     </properties>
 
     <dependencies>
         <dependency>
             <groupId>org.apache.storm</groupId>
             <artifactId>storm-core</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.mapdb</groupId>
+            <artifactId>mapdb</artifactId>
         </dependency>
     </dependencies>
 
@@ -29,6 +35,12 @@
                 <groupId>org.apache.storm</groupId>
                 <artifactId>storm-core</artifactId>
                 <version>${storm.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>org.mapdb</groupId>
+                <artifactId>mapdb</artifactId>
+                <version>${mapdb.version}</version>
             </dependency>
         </dependencies>
     </dependencyManagement>
