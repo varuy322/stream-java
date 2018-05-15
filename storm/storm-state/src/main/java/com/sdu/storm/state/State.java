@@ -1,4 +1,4 @@
-package com.sdu.storm.topology.state;
+package com.sdu.storm.state;
 
 public interface State {
 

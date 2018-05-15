@@ -4,8 +4,8 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
-    <groupId>com.sdu.topic</groupId>
-    <artifactId>topic-java</artifactId>
+    <groupId>com.sdu.data</groupId>
+    <artifactId>stream</artifactId>
     <packaging>pom</packaging>
     <version>1.0-SNAPSHOT</version>
     <modules>
@@ -13,6 +13,7 @@
         <module>spark</module>
         <module>storm/storm-client</module>
         <module>storm/storm-dynamicJob</module>
+        <module>storm/storm-state</module>
     </modules>
 
     <properties>
