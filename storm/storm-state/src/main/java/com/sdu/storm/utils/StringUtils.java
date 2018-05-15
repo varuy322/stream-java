@@ -4,6 +4,8 @@ import java.util.Arrays;
 
 public class StringUtils {
 
+    private static final char[] HEX_CHARS = { '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f' };
+
     public static String arrayAwareToString(Object o) {
         if (o == null) {
             return "null";
@@ -55,4 +57,23 @@ public class StringUtils {
         }
     }
 
+    public static String byteToHexString(final byte[] bytes) {
+        return byteToHexString(bytes, 0, bytes.length);
+    }
+
+    public static String byteToHexString(final byte[] bytes, final int start, final int end) {
+        if (bytes == null) {
+            throw new IllegalArgumentException("bytes == null");
+        }
+
+        int length = end - start;
+        char[] out = new char[length * 2];
+
+        for (int i = start, j = 0; i < end; i++) {
+            out[j++] = HEX_CHARS[(0xF0 & bytes[i]) >>> 4];
+            out[j++] = HEX_CHARS[0x0F & bytes[i]];
+        }
+
+        return new String(out);
+    }
 }
