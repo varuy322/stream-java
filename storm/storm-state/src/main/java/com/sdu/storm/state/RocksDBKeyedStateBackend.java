@@ -1,5 +1,6 @@
 package com.sdu.storm.state;
 
+import com.google.common.collect.Lists;
 import com.sdu.storm.configuration.ConfigConstants;
 import com.sdu.storm.state.typeutils.TypeSerializer;
 import com.sdu.storm.utils.FileUtils;
@@ -11,10 +12,7 @@ import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.io.IOException;
-import java.util.Arrays;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 /**
  *
@@ -58,6 +56,12 @@ public class RocksDBKeyedStateBackend<K> extends AbstractKeyedStateBackend<K> {
      */
     private final WriteOptions writeOptions;
 
+    /**
+     * We are not using the default column family for Storm state ops, but we still need to remember this handle so that
+     * we can close it properly when the backend is closed. This is required by RocksDB's native memory management.
+     */
+    private ColumnFamilyHandle defaultColumnFamily;
+
     // -------------------------------------------------------------------------------------------
 
     /**
@@ -99,8 +103,7 @@ public class RocksDBKeyedStateBackend<K> extends AbstractKeyedStateBackend<K> {
         this.kvStateInformation = new LinkedHashMap<>();
 
         // Flink restore()触发RockDB初始化操作
-
-
+        createDB();
     }
 
     @Override
@@ -138,7 +141,40 @@ public class RocksDBKeyedStateBackend<K> extends AbstractKeyedStateBackend<K> {
     }
 
     private void createDB() throws IOException {
+        List<ColumnFamilyHandle> columnFamilyHandles = new ArrayList<>(1);
+        this.db = openDB(instanceRocksDBPath.getAbsolutePath(), Collections.emptyList(), columnFamilyHandles);
+        this.defaultColumnFamily = columnFamilyHandles.get(0);
+    }
 
+
+    private RocksDB openDB(String path,
+                           List<ColumnFamilyDescriptor> stateColumnFamilyDescriptors,
+                           List<ColumnFamilyHandle> stateColumnFamilyHandles) throws IOException {
+        // RocksDB Column Description
+        List<ColumnFamilyDescriptor> columnFamilyDescriptors = Lists.newArrayListWithCapacity(1 + stateColumnFamilyDescriptors.size());
+
+        // we add the required descriptor for the default CF in FIRST position, see
+        // https://github.com/facebook/rocksdb/wiki/RocksJava-Basics#opening-a-database-with-column-families
+        columnFamilyDescriptors.add(new ColumnFamilyDescriptor(RocksDB.DEFAULT_COLUMN_FAMILY, columnOptions));
+        columnFamilyDescriptors.addAll(stateColumnFamilyDescriptors);
+
+        RocksDB dbRef;
+
+        try {
+            dbRef = RocksDB.open(
+                    Preconditions.checkNotNull(dbOptions),
+                    Preconditions.checkNotNull(path),
+                    columnFamilyDescriptors,
+                    stateColumnFamilyHandles);
+        } catch (RocksDBException e) {
+            throw new IOException("Error while opening RocksDB instance.", e);
+        }
+
+        // requested + default CF
+        Preconditions.checkState(1 + stateColumnFamilyDescriptors.size() == stateColumnFamilyHandles.size(),
+                "Not all requested column family handles have been created");
+
+        return dbRef;
     }
 
     private <N, S> Tuple2<ColumnFamilyHandle, RegisteredKeyedBackendStateMetaInfo<N, S>> tryRegisterKvStateInformation(
