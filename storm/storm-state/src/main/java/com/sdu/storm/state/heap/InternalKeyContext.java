@@ -1,5 +1,6 @@
 package com.sdu.storm.state.heap;
 
+import com.sdu.storm.state.KeyGroupRange;
 import com.sdu.storm.state.typeutils.TypeSerializer;
 
 public interface InternalKeyContext<K> {
@@ -19,6 +20,10 @@ public interface InternalKeyContext<K> {
      */
     int getNumberOfKeyGroups();
 
+    /**
+     * Returns the key groups for this backend.
+     */
+    KeyGroupRange getKeyGroupRange();
 
     /**
      * {@link TypeSerializer} for the state backend key type.

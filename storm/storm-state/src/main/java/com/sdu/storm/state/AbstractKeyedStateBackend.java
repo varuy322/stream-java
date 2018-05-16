@@ -17,12 +17,18 @@ public abstract class AbstractKeyedStateBackend<K> implements KeyedStateBackend<
     /** The number of key-groups aka max parallelism */
     protected final int numberOfKeyGroups;
 
+    /** Range of key-groups for which this backend is responsible */
+    protected final KeyGroupRange keyGroupRange;
+
+
 
     public AbstractKeyedStateBackend(
             TypeSerializer<K> keySerializer,
-            int numberOfKeyGroups) {
+            int numberOfKeyGroups,
+            KeyGroupRange keyGroupRange) {
         this.keySerializer = Preconditions.checkNotNull(keySerializer);
         this.numberOfKeyGroups = Preconditions.checkNotNull(numberOfKeyGroups);
+        this.keyGroupRange = Preconditions.checkNotNull(keyGroupRange);
     }
 
     /**
@@ -62,5 +68,10 @@ public abstract class AbstractKeyedStateBackend<K> implements KeyedStateBackend<
     @Override
     public int getNumberOfKeyGroups() {
         return numberOfKeyGroups;
+    }
+
+    @Override
+    public KeyGroupRange getKeyGroupRange() {
+        return keyGroupRange;
     }
 }

@@ -1,55 +1,83 @@
 package com.sdu.storm.state;
 
-import org.rocksdb.ColumnFamilyOptions;
-import org.rocksdb.DBOptions;
+import org.rocksdb.*;
 
 public enum PredefinedOptions {
 
     DEFAULT {
         @Override
         public DBOptions createDBOptions() {
-            return null;
+            return new DBOptions().setUseFsync(false);
         }
 
         @Override
         public ColumnFamilyOptions createColumnOptions() {
-            return null;
+            return new ColumnFamilyOptions();
         }
     },
 
     SPINNING_DISK_OPTIMIZED {
         @Override
         public DBOptions createDBOptions() {
-            return null;
+            return new DBOptions()
+                    .setIncreaseParallelism(4)
+                    .setUseFsync(false)
+                    .setMaxOpenFiles(-1);
         }
 
         @Override
         public ColumnFamilyOptions createColumnOptions() {
-            return null;
+            return new ColumnFamilyOptions()
+                    .setCompactionStyle(CompactionStyle.LEVEL)
+                    .setLevelCompactionDynamicLevelBytes(true);
         }
     },
 
     SPINNING_DISK_OPTIMIZED_HIGH_MEM {
         @Override
         public DBOptions createDBOptions() {
-            return null;
+            return new DBOptions()
+                    .setIncreaseParallelism(4)
+                    .setUseFsync(false)
+                    .setMaxOpenFiles(-1);
         }
 
         @Override
         public ColumnFamilyOptions createColumnOptions() {
-            return null;
+            final long blockCacheSize = 256 * 1024 * 1024;
+            final long blockSize = 128 * 1024;
+            final long targetFileSize = 256 * 1024 * 1024;
+            final long writeBufferSize = 64 * 1024 * 1024;
+
+            return new ColumnFamilyOptions()
+                    .setCompactionStyle(CompactionStyle.LEVEL)
+                    .setLevelCompactionDynamicLevelBytes(true)
+                    .setTargetFileSizeBase(targetFileSize)
+                    .setMaxBytesForLevelBase(4 * targetFileSize)
+                    .setWriteBufferSize(writeBufferSize)
+                    .setMinWriteBufferNumberToMerge(3)
+                    .setMaxWriteBufferNumber(4)
+                    .setTableFormatConfig(
+                            new BlockBasedTableConfig()
+                                    .setBlockCacheSize(blockCacheSize)
+                                    .setBlockSize(blockSize)
+                                    .setFilter(new BloomFilter())
+                    );
         }
     },
 
     FLASH_SSD_OPTIMIZED {
         @Override
         public DBOptions createDBOptions() {
-            return null;
+            return new DBOptions()
+                    .setIncreaseParallelism(4)
+                    .setUseFsync(false)
+                    .setMaxOpenFiles(-1);
         }
 
         @Override
         public ColumnFamilyOptions createColumnOptions() {
-            return null;
+            return new ColumnFamilyOptions();
         }
     };
 

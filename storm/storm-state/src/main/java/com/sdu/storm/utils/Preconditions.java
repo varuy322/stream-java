@@ -2,6 +2,8 @@ package com.sdu.storm.utils;
 
 import javax.annotation.Nullable;
 
+import static java.lang.String.format;
+
 public class Preconditions {
 
     public static void checkArgument(boolean condition) {
@@ -13,6 +15,15 @@ public class Preconditions {
     public static void checkArgument(boolean condition, @Nullable Object errorMessage) {
         if (!condition) {
             throw new IllegalArgumentException(String.valueOf(errorMessage));
+        }
+    }
+
+    public static void checkArgument(boolean condition,
+                                     @Nullable String errorMessageTemplate,
+                                     @Nullable Object... errorMessageArgs) {
+
+        if (!condition) {
+            throw new IllegalArgumentException(format(errorMessageTemplate, errorMessageArgs));
         }
     }
 

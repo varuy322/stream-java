@@ -2,7 +2,9 @@ package com.sdu.storm.state;
 
 import com.sdu.storm.state.typeutils.TypeSerializer;
 
+import java.io.IOException;
 import java.io.Serializable;
+import java.util.Map;
 
 /**
  *
@@ -11,9 +13,11 @@ import java.io.Serializable;
 public interface StateBackend extends Serializable {
 
     <K> AbstractKeyedStateBackend<K> createKeyedStateBackend(
-            String operatorIdentifier,
+            Map stormConf,
+            String component,
+            int taskId,
             TypeSerializer<K> keySerializer,
             int numberOfKeyGroups,
-            KeyGroupRange keyGroupRange);
+            KeyGroupRange keyGroupRange) throws IOException;
 
 }

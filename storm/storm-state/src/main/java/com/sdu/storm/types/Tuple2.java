@@ -4,8 +4,8 @@ import com.sdu.storm.utils.StringUtils;
 
 public class Tuple2<T0, T1> extends Tuple {
 
-    private T0 f0;
-    private T1 f1;
+    public T0 f0;
+    public T1 f1;
 
     public Tuple2() { }
 
