@@ -131,6 +131,7 @@ public abstract class AbstractRocksDBState<K, N, V, S extends State> implements 
         Preconditions.checkNotNull(namespaceSerializer);
 
         keySerializationStream.reset();
+        // RocksDB KEY构成: KeyGroup + Key + Namespace
         RocksDBKeySerializationUtils.writeKeyGroup(keyGroup, backend.getKeyGroupPrefixBytes(), keySerializationDataOutputView);
         RocksDBKeySerializationUtils.writeKey(key, keySerializer, keySerializationStream, keySerializationDataOutputView, ambiguousKeyPossible);
         RocksDBKeySerializationUtils.writeNameSpace(namespace, namespaceSerializer, keySerializationStream, keySerializationDataOutputView, ambiguousKeyPossible);

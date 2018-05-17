@@ -10,6 +10,7 @@ import org.rocksdb.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import java.io.File;
 import java.io.IOException;
@@ -151,9 +152,9 @@ public class RocksDBKeyedStateBackend<K> extends AbstractKeyedStateBackend<K> {
                 iterator,
                 state,
                 keySerializer,
-                getKeyGroupPrefixBytes(),
-                namespaceBytes,
-                ambiguousKeyPossible);
+                keyGroupPrefixBytes,
+                ambiguousKeyPossible,
+                namespaceBytes);
 
         Stream<K> targetStream = StreamSupport.stream(Spliterators.spliteratorUnknownSize(keysIterator, Spliterator.ORDERED), false);
 
@@ -359,8 +360,13 @@ public class RocksDBKeyedStateBackend<K> extends AbstractKeyedStateBackend<K> {
     }
 
 
-    private static class RocksIteratorForKeysWrapper<K> implements Iterator<K>, AutoCloseable {
-
+    /**
+     * Adapter class to bridge between {@link RocksIterator} and {@link Iterator} to iterate over the keys. This class
+     * is not thread safe.
+     *
+     * @param <K> the type of the iterated objects, which are keys in RocksDB.
+     */
+    static class RocksIteratorForKeysWrapper<K> implements Iterator<K>, AutoCloseable {
         private final RocksIterator iterator;
         private final String state;
         private final TypeSerializer<K> keySerializer;
@@ -369,20 +375,20 @@ public class RocksDBKeyedStateBackend<K> extends AbstractKeyedStateBackend<K> {
         private final boolean ambiguousKeyPossible;
         private K nextKey;
 
-        public RocksIteratorForKeysWrapper(
+        RocksIteratorForKeysWrapper(
                 RocksIterator iterator,
                 String state,
                 TypeSerializer<K> keySerializer,
                 int keyGroupPrefixBytes,
-                byte[] namespaceBytes,
-                boolean ambiguousKeyPossible) {
+                boolean ambiguousKeyPossible,
+                byte[] namespaceBytes) {
             this.iterator = Preconditions.checkNotNull(iterator);
             this.state = Preconditions.checkNotNull(state);
             this.keySerializer = Preconditions.checkNotNull(keySerializer);
-            this.keyGroupPrefixBytes = keyGroupPrefixBytes;
-            this.namespaceBytes = namespaceBytes;
-            this.ambiguousKeyPossible = ambiguousKeyPossible;
+            this.keyGroupPrefixBytes = Preconditions.checkNotNull(keyGroupPrefixBytes);
+            this.namespaceBytes = Preconditions.checkNotNull(namespaceBytes);
             this.nextKey = null;
+            this.ambiguousKeyPossible = ambiguousKeyPossible;
         }
 
         @Override
@@ -390,7 +396,7 @@ public class RocksDBKeyedStateBackend<K> extends AbstractKeyedStateBackend<K> {
             while (nextKey == null && iterator.isValid()) {
                 try {
                     byte[] key = iterator.key();
-                    if (isisMatchingNameSpace(key)) {
+                    if (isMatchingNameSpace(key)) {
                         ByteArrayInputStreamWithPos inputStream =
                                 new ByteArrayInputStreamWithPos(key, keyGroupPrefixBytes, key.length - keyGroupPrefixBytes);
                         DataInputViewStreamWrapper dataInput = new DataInputViewStreamWrapper(inputStream);
@@ -401,6 +407,7 @@ public class RocksDBKeyedStateBackend<K> extends AbstractKeyedStateBackend<K> {
                                 ambiguousKeyPossible);
                         nextKey = value;
                     }
+                    iterator.next();
                 } catch (IOException e) {
                     throw new StormRuntimeException("Failed to access state [" + state + "]", e);
                 }
@@ -419,31 +426,23 @@ public class RocksDBKeyedStateBackend<K> extends AbstractKeyedStateBackend<K> {
             return tmpKey;
         }
 
-        @Override
-        public void close() {
-            iterator.close();
-        }
-
-
-        private boolean isisMatchingNameSpace(@Nullable byte[] key) {
-            // RocksDB存储KEY由三部分组成(@see AbstractRocksDBState.writeKeyWithGroupAndNamespace):
-            //  1: keyGroup
-            //  2: key
-            //  3: namespace
-            final int namespaceLength = namespaceBytes.length;
-            final int basicLength = namespaceLength + keyGroupPrefixBytes;
+        private boolean isMatchingNameSpace(@Nonnull byte[] key) {
+            final int namespaceBytesLength = namespaceBytes.length;
+            final int basicLength = namespaceBytesLength + keyGroupPrefixBytes;
             if (key.length >= basicLength) {
-                // 校验是否属于同一个namespace
-                // 从后向前比较, 故i = 1
-                for (int i = 1; i <= namespaceLength; ++i) {
-                    if (key[key.length -1] != namespaceBytes[namespaceLength - i]) {
+                for (int i = 1; i <= namespaceBytesLength; ++i) {
+                    if (key[key.length - i] != namespaceBytes[namespaceBytesLength - i]) {
                         return false;
                     }
                 }
                 return true;
             }
-
             return false;
+        }
+
+        @Override
+        public void close() {
+            iterator.close();
         }
     }
 }

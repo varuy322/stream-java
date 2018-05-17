@@ -21,6 +21,7 @@ import java.io.IOException;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.Map;
+import java.util.stream.Stream;
 
 import static com.sdu.storm.state.rocksdb.PredefinedOptions.SPINNING_DISK_OPTIMIZED;
 
@@ -112,9 +113,9 @@ public class RocksDBStateBackendTest extends StateBackendTestBase<RocksDBStateBa
         }
 
 //        // 按照namespace读取数据
-//        Stream<TimeWindow> stream = windowKeyStateBackend.getKeys("TestListState", "namespace1");
-//        System.out.println("Namespace[namespace1] has key: ");
-//        stream.forEach(System.out::println);
+        Stream<TimeWindow> stream = windowKeyStateBackend.getKeys("TestListState", "namespace1");
+        System.out.println("Namespace[namespace1] has key: ");
+        stream.forEach(System.out::println);
     }
 
     private static final class RocksDBOptionsFactory implements OptionsFactory {
