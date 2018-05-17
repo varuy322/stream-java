@@ -162,7 +162,7 @@ public class RocksDBKeyedStateBackend<K> extends AbstractKeyedStateBackend<K> {
     }
 
     @Override
-    protected <N, T> InternalValueState<K, N, T> createValueState(
+    public  <N, T> InternalValueState<K, N, T> createValueState(
             TypeSerializer<N> namespaceSerializer,
             ValueStateDescriptor<T> stateDesc) throws Exception {
         Tuple2<ColumnFamilyHandle, RegisteredKeyedBackendStateMetaInfo<N, T>> registerResult =
@@ -193,7 +193,7 @@ public class RocksDBKeyedStateBackend<K> extends AbstractKeyedStateBackend<K> {
     }
 
     @Override
-    protected <N, UK, UV> InternalMapState<K, N, UK, UV> createMapState(
+    public  <N, UK, UV> InternalMapState<K, N, UK, UV> createMapState(
             TypeSerializer<N> namespaceSerializer,
             MapStateDescriptor<UK, UV> stateDesc) throws Exception {
         Tuple2<ColumnFamilyHandle, RegisteredKeyedBackendStateMetaInfo<N, Map<UK, UV>>> registerResult =

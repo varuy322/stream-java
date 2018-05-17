@@ -50,21 +50,17 @@ public class RocksDBStateBackendTest extends StateBackendTestBase<RocksDBStateBa
 
     @Test
     @SuppressWarnings("unchecked")
-    public void testRockDBListState() throws Exception {
-        RocksDBStateBackend stateBackend = getStateBackend();
-
+    public void testRocksDBListState() throws Exception {
         // 需设置RockDB初始化目录
         Map stormConf = Maps.newHashMap();
         stormConf.put(ConfigConstants.TOPOLOGY_STATE_ROCKSDB_LIB_DIR, "/Users/hanhan.zhang/tmp/rocksdb-lib");
 
         // RocksDBKeyedStateBackend实例化时初始化RocksDB
-        RocksDBKeyedStateBackend<TimeWindow> windowKeyStateBackend = (RocksDBKeyedStateBackend<TimeWindow>) stateBackend.createKeyedStateBackend(
+        RocksDBKeyedStateBackend<TimeWindow> windowKeyStateBackend = (RocksDBKeyedStateBackend<TimeWindow>) createKeyedStateBackend(
                 stormConf,
-                "TestBolt",
-                0,
-                new TimeWindowTypeSerializer(),
-                10,
-                new KeyGroupRange(0, 9));
+                "TestBolt1",
+                1,
+                new TimeWindowTypeSerializer());
 
         // StateDescriptor用于构建State
         // Note:
@@ -118,6 +114,98 @@ public class RocksDBStateBackendTest extends StateBackendTestBase<RocksDBStateBa
         stream.forEach(System.out::println);
     }
 
+    @Test
+    @SuppressWarnings("unchecked")
+    public void testRocksDBValueState() throws Exception {
+        // 需设置RockDB初始化目录
+        Map stormConf = Maps.newHashMap();
+        stormConf.put(ConfigConstants.TOPOLOGY_STATE_ROCKSDB_LIB_DIR, "/Users/hanhan.zhang/tmp/rocksdb-lib");
+
+        // RocksDBKeyedStateBackend实例化时初始化RocksDB
+        RocksDBKeyedStateBackend<TimeWindow> windowKeyStateBackend = (RocksDBKeyedStateBackend<TimeWindow>) createKeyedStateBackend(
+                stormConf,
+                "TestBolt1",
+                1,
+                new TimeWindowTypeSerializer());
+
+        StringSerializer namespaceSerializer = StringSerializer.INSTANCE;
+        ValueStateDescriptor<TimeObject> stateDescriptor = new ValueStateDescriptor<>(
+                "ValueState",
+                new TimeObjectSerializer(),
+                null);
+        InternalValueState<TimeWindow, String, TimeObject> valueState = windowKeyStateBackend.createValueState(namespaceSerializer, stateDescriptor);
+
+        // 存储数据
+        TimeWindow window1 = new TimeWindow(1, 6);
+        windowKeyStateBackend.setCurrentKey(window1);
+        valueState.setCurrentNamespace("ns1");
+        valueState.update(new TimeObject(8L));
+
+        TimeWindow window2 = new TimeWindow(3, 7);
+        windowKeyStateBackend.setCurrentKey(window2);
+        valueState.setCurrentNamespace("ns2");
+        valueState.update(new TimeObject(9L));
+
+        // 读取数据
+        windowKeyStateBackend.setCurrentKey(window1);
+        valueState.setCurrentNamespace("ns1");
+        System.out.println("Namespace: ns1, KEY: " + window1 + ", Value: " + valueState.value());
+
+        windowKeyStateBackend.setCurrentKey(window2);
+        valueState.setCurrentNamespace("ns2");
+        System.out.println("Namespace: ns2, KEY: " + window2 + ", Value: " + valueState.value());
+
+        // 更新数据
+        windowKeyStateBackend.setCurrentKey(window1);
+        valueState.setCurrentNamespace("ns1");
+        valueState.update(new TimeObject(10L));
+        System.out.println("Namespace: ns1, KEY: " + window1 + ", Value: " + valueState.value());
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    public void testRocksDBMapState() throws Exception {
+        // 需设置RockDB初始化目录
+        Map stormConf = Maps.newHashMap();
+        stormConf.put(ConfigConstants.TOPOLOGY_STATE_ROCKSDB_LIB_DIR, "/Users/hanhan.zhang/tmp/rocksdb-lib");
+
+        // RocksDBKeyedStateBackend实例化时初始化RocksDB
+        RocksDBKeyedStateBackend<TimeWindow> windowKeyStateBackend = (RocksDBKeyedStateBackend<TimeWindow>) createKeyedStateBackend(
+                stormConf,
+                "TestBolt1",
+                1,
+                new TimeWindowTypeSerializer());
+
+        StringSerializer namespaceSerializer = StringSerializer.INSTANCE;
+        MapStateDescriptor<String, Integer> stateDescriptor = new MapStateDescriptor<>(
+                "MapState",
+                StringSerializer.INSTANCE,
+                IntSerializer.INSTANCE,
+                Collections.emptyMap());
+
+        InternalMapState<TimeWindow, String, String, Integer> mapState = windowKeyStateBackend.createMapState(
+                namespaceSerializer,
+                stateDescriptor);
+
+        TimeWindow window1 = new TimeWindow(1, 7);
+        windowKeyStateBackend.setCurrentKey(window1);
+        mapState.setCurrentNamespace("ns1");
+        mapState.put("A", 1);
+        mapState.put("B", 1);
+
+        TimeWindow window2 = new TimeWindow(2, 8);
+        windowKeyStateBackend.setCurrentKey(window2);
+        mapState.setCurrentNamespace("ns2");
+        mapState.put("C", 1);
+        mapState.put("D", 3);
+
+        windowKeyStateBackend.setCurrentKey(window1);
+        mapState.setCurrentNamespace("ns1");
+        System.out.println("Namespace: ns1, Key: " + window1 + ", UserKey: E, UserValue: " + mapState.get("E"));
+        System.out.println("Namespace: ns1, Key: " + window1 + ", UserKey: A, UserValue: " + mapState.get("A"));
+
+    }
+
     private static final class RocksDBOptionsFactory implements OptionsFactory {
 
         @Override
@@ -151,6 +239,24 @@ public class RocksDBStateBackendTest extends StateBackendTestBase<RocksDBStateBa
         }
     }
 
+    private static final class TimeObject {
+        private long timestamp;
+
+        TimeObject(long timestamp) {
+            this.timestamp = timestamp;
+        }
+
+        void setTimestamp(long timestamp) {
+            this.timestamp = timestamp;
+        }
+
+        @Override
+        public String toString() {
+            return "TimeObject[" +
+                    "timestamp=" + timestamp +
+                    ']';
+        }
+    }
 
     private static final class TimeWindowTypeSerializer extends TypeSerializer<TimeWindow> {
 
@@ -187,6 +293,58 @@ public class RocksDBStateBackendTest extends StateBackendTestBase<RocksDBStateBa
 
         @Override
         public TimeWindow copy(TimeWindow from) {
+            return null;
+        }
+
+        @Override
+        public boolean equals(Object obj) {
+            return false;
+        }
+
+        @Override
+        public boolean canEqual(Object obj) {
+            return false;
+        }
+
+        @Override
+        public int hashCode() {
+            return 0;
+        }
+    }
+
+    private static final class TimeObjectSerializer extends TypeSerializer<TimeObject> {
+        @Override
+        public TimeObject createInstance() {
+            return new TimeObject(-1);
+        }
+
+        @Override
+        public int getLength() {
+            return 8;
+        }
+
+        @Override
+        public boolean isImmutableType() {
+            return true;
+        }
+
+        @Override
+        public void serialize(TimeObject record, DataOutputView target) throws IOException {
+            target.writeLong(record.timestamp);
+        }
+
+        @Override
+        public TimeObject deserialize(DataInputView source) throws IOException {
+            return new TimeObject(source.readLong());
+        }
+
+        @Override
+        public TypeSerializer<TimeObject> duplicate() {
+            return new TimeObjectSerializer();
+        }
+
+        @Override
+        public TimeObject copy(TimeObject from) {
             return null;
         }
 
