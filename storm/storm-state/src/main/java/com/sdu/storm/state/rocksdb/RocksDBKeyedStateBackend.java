@@ -1,18 +1,21 @@
-package com.sdu.storm.state;
+package com.sdu.storm.state.rocksdb;
 
 import com.google.common.collect.Lists;
 import com.sdu.storm.configuration.ConfigConstants;
+import com.sdu.storm.state.*;
 import com.sdu.storm.state.typeutils.TypeSerializer;
-import com.sdu.storm.utils.FileUtils;
-import com.sdu.storm.utils.Preconditions;
+import com.sdu.storm.utils.*;
 import com.sdu.storm.types.Tuple2;
 import org.rocksdb.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import javax.annotation.Nullable;
 import java.io.File;
 import java.io.IOException;
 import java.util.*;
+import java.util.stream.Stream;
+import java.util.stream.StreamSupport;
 
 /**
  *
@@ -67,13 +70,15 @@ public class RocksDBKeyedStateBackend<K> extends AbstractKeyedStateBackend<K> {
     /**
      * Information about the k/v states as we create them. This is used to retrieve the
      * column family that is used for a state and also for sanity checks when restoring.
+     *
+     * 维护State与RocksDB数据存储句柄的映射关系
      */
     private final Map<String, Tuple2<ColumnFamilyHandle, RegisteredKeyedBackendStateMetaInfo<?, ?>>> kvStateInformation;
 
     /** True if incremental checkpointing is enabled. */
     private final boolean enableIncrementalCheckpointing;
 
-    public RocksDBKeyedStateBackend(File instanceRocksDBPath,
+    public RocksDBKeyedStateBackend(File instanceBasePath,
                                     DBOptions dbOptions,
                                     ColumnFamilyOptions columnFamilyOptions,
                                     TypeSerializer<K> keySerializer,
@@ -84,13 +89,21 @@ public class RocksDBKeyedStateBackend<K> extends AbstractKeyedStateBackend<K> {
 
         this.enableIncrementalCheckpointing = enableIncrementalCheckpointing;
 
-        this.instanceBasePath = Preconditions.checkNotNull(instanceRocksDBPath);
+        // RocksDB存储的根目录
+        this.instanceBasePath = Preconditions.checkNotNull(instanceBasePath);
+        // RocksDB数据存储目录
         this.instanceRocksDBPath = new File(instanceBasePath, "db");
+
         checkAndCreateDirectory(instanceBasePath);
+
         if (instanceRocksDBPath.exists()) {
             // Clear the base directory when the backend is created
             // in case something crashed and the backend never reached dispose()
+            // 删除RocksDB数据存储目录的文件
             cleanInstanceBasePath();
+        } else {
+            // 创建RocksDB数据存储目录, 否则构建RocksDB实例异常
+            checkAndCreateDirectory(instanceRocksDBPath);
         }
 
         this.dbOptions = Preconditions.checkNotNull(dbOptions);
@@ -104,6 +117,62 @@ public class RocksDBKeyedStateBackend<K> extends AbstractKeyedStateBackend<K> {
 
         // Flink restore()触发RockDB初始化操作
         createDB();
+    }
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public <N> Stream<K> getKeys(String state, N namespace) {
+        Tuple2<ColumnFamilyHandle, RegisteredKeyedBackendStateMetaInfo<?, ?>> columnInfo = kvStateInformation.get(state);
+        if (columnInfo == null) {
+            return Stream.empty();
+        }
+
+        final TypeSerializer<N> namespaceSerializer = (TypeSerializer<N>) columnInfo.f1.getNamespaceSerializer();
+        final ByteArrayOutputStreamWithPos namespaceOutputStream = new ByteArrayOutputStreamWithPos(8);
+        boolean ambiguousKeyPossible = RocksDBKeySerializationUtils.isAmbiguousKeyPossible(keySerializer, namespaceSerializer);
+        byte[]namespaceBytes;
+
+        try {
+            RocksDBKeySerializationUtils.writeNameSpace(
+                    namespace,
+                    namespaceSerializer,
+                    namespaceOutputStream,
+                    new DataOutputViewStreamWrapper(namespaceOutputStream),
+                    ambiguousKeyPossible);
+            namespaceBytes = namespaceOutputStream.toByteArray();
+        } catch (IOException e) {
+            throw new StormRuntimeException("Failed to get keys from RocksDB state backend.", e);
+        }
+
+        RocksIterator iterator = db.newIterator(columnInfo.f0);
+        iterator.seekToFirst();
+
+        final RocksIteratorForKeysWrapper<K> keysIterator = new RocksIteratorForKeysWrapper<>(
+                iterator,
+                state,
+                keySerializer,
+                getKeyGroupPrefixBytes(),
+                namespaceBytes,
+                ambiguousKeyPossible);
+
+        Stream<K> targetStream = StreamSupport.stream(Spliterators.spliteratorUnknownSize(keysIterator, Spliterator.ORDERED), false);
+
+        return targetStream.onClose(keysIterator::close);
+    }
+
+    @Override
+    protected <N, T> InternalValueState<K, N, T> createValueState(
+            TypeSerializer<N> namespaceSerializer,
+            ValueStateDescriptor<T> stateDesc) throws Exception {
+        Tuple2<ColumnFamilyHandle, RegisteredKeyedBackendStateMetaInfo<N, T>> registerResult =
+                tryRegisterKvStateInformation(stateDesc, namespaceSerializer);
+
+        return new RocksDBValueState<>(
+                registerResult.f0,
+                registerResult.f1.getNamespaceSerializer(),
+                registerResult.f1.getStateSerializer(),
+                stateDesc.getDefaultValue(),
+                this);
     }
 
     @Override
@@ -122,18 +191,65 @@ public class RocksDBKeyedStateBackend<K> extends AbstractKeyedStateBackend<K> {
                 this);
     }
 
+    @Override
+    protected <N, UK, UV> InternalMapState<K, N, UK, UV> createMapState(
+            TypeSerializer<N> namespaceSerializer,
+            MapStateDescriptor<UK, UV> stateDesc) throws Exception {
+        Tuple2<ColumnFamilyHandle, RegisteredKeyedBackendStateMetaInfo<N, Map<UK, UV>>> registerResult =
+                tryRegisterKvStateInformation(stateDesc, namespaceSerializer);
+
+        return new RocksDBMapState<>(
+                registerResult.f0,
+                registerResult.f1.getNamespaceSerializer(),
+                registerResult.f1.getStateSerializer(),
+                stateDesc.getDefaultValue(),
+                this);
+    }
+
     public WriteOptions getWriteOptions() {
         return writeOptions;
     }
 
     @Override
     public TypeSerializer<K> getKeySerializer() {
-        return null;
+        return keySerializer;
     }
 
     @Override
     public void dispose() throws Exception {
-        // TODO: 待实现
+        super.dispose();
+
+
+        // IMPORTANT: null reference to signal potential async checkpoint workers that the db was disposed, as
+        // working on the disposed object results in SEGFAULTS.
+        if (db != null) {
+
+            // RocksDB's native memory management requires that *all* CFs (including default) are closed before the
+            // DB is closed. See:
+            // https://github.com/facebook/rocksdb/wiki/RocksJava-Basics#opening-a-database-with-column-families
+            // Start with default CF ...
+            IOUtils.closeQuietly(defaultColumnFamily);
+
+            // ... continue with the ones created by Flink...
+            for (Tuple2<ColumnFamilyHandle, RegisteredKeyedBackendStateMetaInfo<?, ?>> columnMetaData :
+                    kvStateInformation.values()) {
+                IOUtils.closeQuietly(columnMetaData.f0);
+            }
+
+            // ... and finally close the DB instance ...
+            IOUtils.closeQuietly(db);
+
+            // invalidate the reference
+            db = null;
+
+            IOUtils.closeQuietly(columnOptions);
+            IOUtils.closeQuietly(dbOptions);
+            IOUtils.closeQuietly(writeOptions);
+            kvStateInformation.clear();
+//            restoredKvStateMetaInfos.clear();
+
+            cleanInstanceBasePath();
+        }
     }
 
     public int getKeyGroupPrefixBytes() {
@@ -196,6 +312,7 @@ public class RocksDBKeyedStateBackend<K> extends AbstractKeyedStateBackend<K> {
                     namespaceSerializer,
                     stateDesc.getSerializer());
 
+            //
             ColumnFamilyHandle columnFamily = createColumnFamily(stateName);
             stateInfo = Tuple2.of(columnFamily, newMetaInfo);
             kvStateInformation.put(stateDesc.getName(), stateInfo);
@@ -238,6 +355,95 @@ public class RocksDBKeyedStateBackend<K> extends AbstractKeyedStateBackend<K> {
             FileUtils.deleteDirectory(instanceBasePath);
         } catch (IOException ex) {
             LOGGER.warn("Could not delete instance base path for RocksDB: " + instanceBasePath, ex);
+        }
+    }
+
+
+    private static class RocksIteratorForKeysWrapper<K> implements Iterator<K>, AutoCloseable {
+
+        private final RocksIterator iterator;
+        private final String state;
+        private final TypeSerializer<K> keySerializer;
+        private final int keyGroupPrefixBytes;
+        private final byte[] namespaceBytes;
+        private final boolean ambiguousKeyPossible;
+        private K nextKey;
+
+        public RocksIteratorForKeysWrapper(
+                RocksIterator iterator,
+                String state,
+                TypeSerializer<K> keySerializer,
+                int keyGroupPrefixBytes,
+                byte[] namespaceBytes,
+                boolean ambiguousKeyPossible) {
+            this.iterator = Preconditions.checkNotNull(iterator);
+            this.state = Preconditions.checkNotNull(state);
+            this.keySerializer = Preconditions.checkNotNull(keySerializer);
+            this.keyGroupPrefixBytes = keyGroupPrefixBytes;
+            this.namespaceBytes = namespaceBytes;
+            this.ambiguousKeyPossible = ambiguousKeyPossible;
+            this.nextKey = null;
+        }
+
+        @Override
+        public boolean hasNext() {
+            while (nextKey == null && iterator.isValid()) {
+                try {
+                    byte[] key = iterator.key();
+                    if (isisMatchingNameSpace(key)) {
+                        ByteArrayInputStreamWithPos inputStream =
+                                new ByteArrayInputStreamWithPos(key, keyGroupPrefixBytes, key.length - keyGroupPrefixBytes);
+                        DataInputViewStreamWrapper dataInput = new DataInputViewStreamWrapper(inputStream);
+                        K value = RocksDBKeySerializationUtils.readKey(
+                                keySerializer,
+                                inputStream,
+                                dataInput,
+                                ambiguousKeyPossible);
+                        nextKey = value;
+                    }
+                } catch (IOException e) {
+                    throw new StormRuntimeException("Failed to access state [" + state + "]", e);
+                }
+            }
+            return nextKey != null;
+        }
+
+        @Override
+        public K next() {
+            if (!hasNext()) {
+                throw new NoSuchElementException("Failed to access state [" + state + "]");
+            }
+
+            K tmpKey = nextKey;
+            nextKey = null;
+            return tmpKey;
+        }
+
+        @Override
+        public void close() {
+            iterator.close();
+        }
+
+
+        private boolean isisMatchingNameSpace(@Nullable byte[] key) {
+            // RocksDB存储KEY由三部分组成(@see AbstractRocksDBState.writeKeyWithGroupAndNamespace):
+            //  1: keyGroup
+            //  2: key
+            //  3: namespace
+            final int namespaceLength = namespaceBytes.length;
+            final int basicLength = namespaceLength + keyGroupPrefixBytes;
+            if (key.length >= basicLength) {
+                // 校验是否属于同一个namespace
+                // 从后向前比较, 故i = 1
+                for (int i = 1; i <= namespaceLength; ++i) {
+                    if (key[key.length -1] != namespaceBytes[namespaceLength - i]) {
+                        return false;
+                    }
+                }
+                return true;
+            }
+
+            return false;
         }
     }
 }

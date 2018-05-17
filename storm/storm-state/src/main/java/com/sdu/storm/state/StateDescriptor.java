@@ -16,6 +16,7 @@ import java.io.Serializable;
 public abstract class StateDescriptor<S extends State, T> implements Serializable {
 
     public enum Type {
+        VALUE,
         LIST,
         MAP
     }

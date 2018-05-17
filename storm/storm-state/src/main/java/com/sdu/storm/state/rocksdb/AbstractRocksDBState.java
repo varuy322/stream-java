@@ -1,5 +1,7 @@
-package com.sdu.storm.state;
+package com.sdu.storm.state.rocksdb;
 
+import com.sdu.storm.state.InternalKvState;
+import com.sdu.storm.state.State;
 import com.sdu.storm.state.typeutils.TypeSerializer;
 import com.sdu.storm.utils.ByteArrayOutputStreamWithPos;
 import com.sdu.storm.utils.DataOutputView;
@@ -132,5 +134,13 @@ public abstract class AbstractRocksDBState<K, N, V, S extends State> implements 
         RocksDBKeySerializationUtils.writeKeyGroup(keyGroup, backend.getKeyGroupPrefixBytes(), keySerializationDataOutputView);
         RocksDBKeySerializationUtils.writeKey(key, keySerializer, keySerializationStream, keySerializationDataOutputView, ambiguousKeyPossible);
         RocksDBKeySerializationUtils.writeNameSpace(namespace, namespaceSerializer, keySerializationStream, keySerializationDataOutputView, ambiguousKeyPossible);
+    }
+
+    protected V getDefaultValue() {
+        if (defaultValue != null) {
+            return valueSerializer.copy(defaultValue);
+        } else {
+            return null;
+        }
     }
 }

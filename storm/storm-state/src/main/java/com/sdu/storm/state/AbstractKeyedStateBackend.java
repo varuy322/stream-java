@@ -21,7 +21,6 @@ public abstract class AbstractKeyedStateBackend<K> implements KeyedStateBackend<
     protected final KeyGroupRange keyGroupRange;
 
 
-
     public AbstractKeyedStateBackend(
             TypeSerializer<K> keySerializer,
             int numberOfKeyGroups,
@@ -30,6 +29,19 @@ public abstract class AbstractKeyedStateBackend<K> implements KeyedStateBackend<
         this.numberOfKeyGroups = Preconditions.checkNotNull(numberOfKeyGroups);
         this.keyGroupRange = Preconditions.checkNotNull(keyGroupRange);
     }
+
+    /**
+     * Creates and returns a new {@link ValueState}.
+     *
+     * @param namespaceSerializer TypeSerializer for the state namespace.
+     * @param stateDesc The {@code StateDescriptor} that contains the name of the state.
+     *
+     * @param <N> The type of the namespace.
+     * @param <T> The type of the value that the {@code ValueState} can store.
+     */
+    protected abstract <N, T> InternalValueState<K, N, T> createValueState(
+            TypeSerializer<N> namespaceSerializer,
+            ValueStateDescriptor<T> stateDesc) throws Exception;
 
     /**
      * Creates and returns a new {@link ListState}.
@@ -43,6 +55,20 @@ public abstract class AbstractKeyedStateBackend<K> implements KeyedStateBackend<
     protected abstract <N, T> InternalListState<K, N, T> createListState(
             TypeSerializer<N> namespaceSerializer,
             ListStateDescriptor<T> stateDesc) throws Exception;
+
+    /**
+     * Creates and returns a new {@link MapState}.
+     *
+     * @param namespaceSerializer TypeSerializer for the state namespace.
+     * @param stateDesc The {@code StateDescriptor} that contains the name of the state.
+     *
+     * @param <N> The type of the namespace.
+     * @param <UK> Type of the keys in the state
+     * @param <UV> Type of the values in the state	 *
+     */
+    protected abstract <N, UK, UV> InternalMapState<K, N, UK, UV> createMapState(
+            TypeSerializer<N> namespaceSerializer,
+            MapStateDescriptor<UK, UV> stateDesc) throws Exception;
 
     @Override
     public void setCurrentKey(K newKey) {
@@ -73,5 +99,10 @@ public abstract class AbstractKeyedStateBackend<K> implements KeyedStateBackend<
     @Override
     public KeyGroupRange getKeyGroupRange() {
         return keyGroupRange;
+    }
+
+    @Override
+    public void dispose() throws Exception {
+
     }
 }

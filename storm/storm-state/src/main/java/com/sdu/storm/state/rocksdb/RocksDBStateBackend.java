@@ -1,8 +1,9 @@
-package com.sdu.storm.state;
+package com.sdu.storm.state.rocksdb;
 
 import com.sdu.storm.configuration.CheckpointingOptions;
 import com.sdu.storm.configuration.ConfigConstants;
 import com.sdu.storm.fs.Path;
+import com.sdu.storm.state.*;
 import com.sdu.storm.state.filesystem.FsStateBackend;
 import com.sdu.storm.state.typeutils.TypeSerializer;
 import com.sdu.storm.utils.AbstractID;
@@ -186,7 +187,7 @@ public class RocksDBStateBackend extends AbstractStateBackend {
 
         // first, make sure that the RocksDB JNI library is loaded
         // we do this explicitly here to have better error handling
-        String tmpDir = (String) stormConf.get(ConfigConstants.TOPOLOGY_STATE_DIR);
+        String tmpDir = (String) stormConf.get(ConfigConstants.TOPOLOGY_STATE_ROCKSDB_LIB_DIR);
         ensureRocksDBIsLoaded(tmpDir);
 
         // initialize rock db store path

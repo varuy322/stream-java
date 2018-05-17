@@ -1,7 +1,9 @@
-package com.sdu.storm.state;
+package com.sdu.storm.state.rocksdb;
 
 import com.sdu.storm.state.typeutils.TypeSerializer;
+import com.sdu.storm.utils.ByteArrayInputStreamWithPos;
 import com.sdu.storm.utils.ByteArrayOutputStreamWithPos;
+import com.sdu.storm.utils.DataInputView;
 import com.sdu.storm.utils.DataOutputView;
 
 import java.io.IOException;
@@ -71,4 +73,26 @@ public class RocksDBKeySerializationUtils {
             value >>>= 8;
         } while (value != 0);
     }
+
+    public static <K> K readKey(
+            TypeSerializer<K> keySerializer,
+            ByteArrayInputStreamWithPos inputStream,
+            DataInputView inputView,
+            boolean ambiguousKeyPossible) throws IOException {
+        int beforeRead = inputStream.getPosition();
+        K key = keySerializer.deserialize(inputView);
+        if (ambiguousKeyPossible) {
+            int length = inputStream.getPosition() - beforeRead;
+            readVariableIntBytes(inputView, length);
+        }
+        return key;
+    }
+
+    private static void readVariableIntBytes(DataInputView inputView, int value) throws IOException {
+        do {
+            inputView.readByte();
+            value >>>= 8;
+        } while (value != 0);
+    }
+
 }
