@@ -4,6 +4,17 @@ import com.codahale.metrics.Counter;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
+import com.sdu.storm.state.AbstractKeyedStateBackend;
+import com.sdu.storm.state.KeyGroupRange;
+import com.sdu.storm.state.ListState;
+import com.sdu.storm.state.ListStateDescriptor;
+import com.sdu.storm.state.rocksdb.OptionsFactory;
+import com.sdu.storm.state.rocksdb.RocksDBKeyedStateBackend;
+import com.sdu.storm.state.rocksdb.RocksDBListState;
+import com.sdu.storm.state.rocksdb.RocksDBStateBackend;
+import com.sdu.storm.state.typeutils.base.StringSerializer;
+import com.sdu.storm.utils.StormRuntimeException;
+import com.sdu.storm.utils.TernaryBoolean;
 import org.apache.storm.Config;
 import org.apache.storm.task.OutputCollector;
 import org.apache.storm.task.TopologyContext;
@@ -17,18 +28,21 @@ import org.slf4j.LoggerFactory;
 
 import java.util.Collection;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.*;
 
+import static com.sdu.storm.state.rocksdb.PredefinedOptions.SPINNING_DISK_OPTIMIZED_HIGH_MEM;
+import static com.sdu.storm.topology.utils.StormUtils.*;
 import static com.sdu.storm.topology.window.TimeCharacteristic.EVENT_TIME;
 
 /**
  *
  * @author hanhan.zhang
  * */
-public class WindowedBoltExecutor implements IRichBolt, WindowTrigger {
+public class BasicWindowedBoltExecutor implements IRichBolt, WindowTrigger {
 
-    private static final Logger LOGGER = LoggerFactory.getLogger(WindowedBoltExecutor.class);
+    private static final Logger LOGGER = LoggerFactory.getLogger(BasicWindowedBoltExecutor.class);
 
     private static final String LATE_TUPLE = "Late_Tuple";
 
@@ -38,24 +52,20 @@ public class WindowedBoltExecutor implements IRichBolt, WindowTrigger {
 
     private transient OutputCollector collector;
 
-    // WindowAssigner负责对Tuple数据划分窗口
     private transient WindowAssigner<Tuple> windowAssigner;
-    private transient WindowAssigner<Tuple> windowStateAssigner;
-    // TimeWindow与Trigger一一对应
     private transient Map<TimeWindow, Trigger<Tuple>> windowToTriggers;
 
 
     private transient volatile long currentTupleTs;
     private transient WindowContext windowContext;
 
-    /***************************************window state相关***************************************/
-    // user window states, expires after the window is purged.[key = User Assign Window, value = State]
-    private transient ConcurrentMap<TimeWindow, Object> userWindowStates;
-    // accumulated user window states[key = State Window, value = State]
-    private transient ConcurrentMap<TimeWindow, Object> accumulatedUserWindowStates;
-    private transient AccumulatedStateContext accumulatedStateContext;
-    // a map from window to state window[key = User Assign Window, value = State Window]
-    private transient ConcurrentMap<TimeWindow, TimeWindow> userWindowToStateWindow;
+    // ------------------------------------window state-------------------------------------
+    private transient AbstractKeyedStateBackend<TimeWindow> keyedStateBackend;
+    private transient ListStateDescriptor<Tuple> windowStateDescriptor;
+    /** The bolt state store namespace */
+    private transient String windowStateNamespace;
+    /** The state in which the window contents is stored. Each window is a key */
+    private transient ListState<Tuple> windowState;
 
     /**************************************watermark相关*******************************************/
     private transient TimeCharacteristic timeCharacteristic;
@@ -72,22 +82,24 @@ public class WindowedBoltExecutor implements IRichBolt, WindowTrigger {
 
     private BasicWindowBolt<Tuple> windowBolt;
 
-    public WindowedBoltExecutor(BasicWindowBolt<Tuple> windowBolt) {
+    public BasicWindowedBoltExecutor(BasicWindowBolt<Tuple> windowBolt) {
         this.windowBolt = windowBolt;
+        this.windowStateDescriptor = windowBolt.getStateDescriptor();
     }
 
     @Override
     public void prepare(Map stormConf, TopologyContext context, OutputCollector collector) {
         this.collector = collector;
         this.windowAssigner = windowBolt.getWindowAssigner();
-        this.windowStateAssigner = windowBolt.getWindowStateAssigner();
 
         this.windowContext = new WindowContext();
         this.windowToTriggers = Maps.newConcurrentMap();
-        this.userWindowStates = Maps.newConcurrentMap();
-        this.accumulatedUserWindowStates = Maps.newConcurrentMap();
-        this.accumulatedStateContext = new AccumulatedStateContext();
-        this.userWindowToStateWindow = Maps.newConcurrentMap();
+
+        try {
+            initWindowState(stormConf, context);
+        } catch (Exception e) {
+            throw new StormRuntimeException("initialize window state backend failure", e);
+        }
 
         if (WindowAssigner.isEventTime(this.windowAssigner)) {
             this.timeCharacteristic = EVENT_TIME;
@@ -123,11 +135,7 @@ public class WindowedBoltExecutor implements IRichBolt, WindowTrigger {
         } else {
             this.maxLagMs = windowBolt.getMaxLagMs();
         }
-//        if (windowBolt.getWatermarkTriggerPolicy() == null) {
-//            this.watermarkTriggerPolicy = TASK_MAX_GLOBAL_MIN_TIMESTAMP;
-//        } else {
-//            this.watermarkTriggerPolicy = windowBolt.getWatermarkTriggerPolicy();
-//        }
+
         if (this.timeCharacteristic == EVENT_TIME) {
             if (this.watermarkGenerator == null) {
                 LOGGER.info("watermark generator is not set, using default periodic watermark generator with" +
@@ -159,57 +167,32 @@ public class WindowedBoltExecutor implements IRichBolt, WindowTrigger {
             return;
         }
 
-        // Tuple所属窗口
-        Collection<TimeWindow> windows = windowAssigner.assignWindows(input, currentTupleTs);
-        // Tuple所属的状态窗口, 状态窗口为翻滚窗口类型:即每个Tuple只属于一个窗口
-        TimeWindow stateWindow = null;
-        Collection<TimeWindow> stateWindows = windowStateAssigner.assignWindows(input, currentTupleTs);
-        if (stateWindows.size() > 0) {
-            stateWindow = stateWindows.iterator().next();
-        }
-
         // 追踪Tuple时间戳
         if (timeCharacteristic == EVENT_TIME && watermarkGenerator != null) {
             watermarkGenerator.track(input.getSourceGlobalStreamId(), currentTupleTs);
         }
 
-        // 如果用户定义State Window Assigner
-        //   属性accumulatedUserWindowStates: 记录用户定义状态窗口与状态映射关系
-        //   属性userWindowToStateWindow: 记录窗口与用户状态窗口映射关系
-        //   注册状态窗口清除任务(需保证)
-        //
-        // 如果用户为定义State Window Assigner
-        //   属性userWindowStates: 记录窗口与状态的映射关系
+        // 划分窗口
+        Collection<TimeWindow> windows = windowAssigner.assignWindows(input, currentTupleTs);
         for (TimeWindow window : windows) {
-            Object windowState;
-            if (stateWindow != null) {
-                // 用户设置State Window Assigner
-                windowState = this.accumulatedUserWindowStates.get(stateWindow);
-                if (windowState == null) {
-                    // TODO: ScheduleFuture任务维护？
-                    windowContext.registerFuture(stateWindow.getEnd(), stateWindow, accumulatedStateContext);
-
-                    windowState = windowBolt.initWindowState(window);
-                    accumulatedUserWindowStates.put(stateWindow, windowState);
+            // Window State
+            keyedStateBackend.setCurrentKey(window);
+            try {
+                List<Tuple> windowTuples = windowState.get();
+                if (windowTuples == null) {
+                    windowTuples = Lists.newLinkedList();
                 }
-
-                if (!windowToTriggers.containsKey(window)) {
-                    createTriggerForWindow(windowAssigner, window, windowToTriggers);
-                }
-                this.userWindowToStateWindow.putIfAbsent(window, stateWindow);
-            } else {
-                // 用户尚未设置State Window Assigner
-                // 窗口与状态窗口一一对应
-                windowState = this.userWindowStates.get(window);
-                if (windowState == null) {
-                    createTriggerForWindow(windowAssigner, window, windowToTriggers);
-
-                    windowState = windowBolt.initWindowState(window);
-                    this.userWindowStates.put(window, windowState);
-                }
+                windowTuples.add(input);
+                windowState.add(input);
+            } catch (Exception e) {
+                // TODO:
             }
 
-            windowBolt.execute(input, windowState, window);
+            // 注册映射关系
+            if (!windowToTriggers.containsKey(window)) {
+                createTriggerForWindow(windowAssigner, window, windowToTriggers);
+            }
+
             // 是否驱除元素
             Trigger<Tuple> trigger = windowToTriggers.get(window);
             if (trigger == null) {
@@ -237,6 +220,17 @@ public class WindowedBoltExecutor implements IRichBolt, WindowTrigger {
             timerTriggerThreadPool.shutdownNow();
             Thread.currentThread().interrupt();
         }
+
+        try {
+            if (windowState != null) {
+                windowState.clear();
+            }
+            if (keyedStateBackend != null) {
+                keyedStateBackend.dispose();
+            }
+        } catch (Exception e) {
+            LOGGER.error("Clean window state failure", e);
+        }
     }
 
     @Override
@@ -257,40 +251,60 @@ public class WindowedBoltExecutor implements IRichBolt, WindowTrigger {
 
     @Override
     public void trigger(TimeWindow window) {
-        Object windowState = null;
-        if (windowStateAssigner != null) {
-            TimeWindow stateWindow = this.userWindowToStateWindow.get(window);
-            if (stateWindow != null) {
-                windowState = this.accumulatedUserWindowStates.get(stateWindow);
+        keyedStateBackend.setCurrentKey(window);
+        try {
+            List<Tuple> windowTuples = windowState.get();
+            windowBolt.execute(windowTuples, window);
+            // 清除窗口数据
+            windowState.clear();
+            windowToTriggers.remove(window);
+            if (timeCharacteristic == EVENT_TIME) {
+                windowContext.deleteEventTimeTimer(window);
             }
-        } else {
-            windowState = this.userWindowStates.get(window);
-        }
-
-        if (windowState == null) {
-            LOGGER.error("Failed to get window state for window {}, it might has been purged already, skip...");
-            return;
-        }
-
-        windowBolt.purgeWindow(windowState, window);
-
-        removeWindow(window);
-    }
-
-    private void removeWindow(TimeWindow window) {
-        if (this.windowStateAssigner != null) {
-            // User State Window清空由AccumulatedStateContext完成
-            this.userWindowToStateWindow.remove(window);
-        } else {
-            // TODO: Window State清空处理
-            this.userWindowStates.remove(window);
-        }
-        this.windowToTriggers.remove(window);
-
-        if (timeCharacteristic == EVENT_TIME) {
-            windowContext.deleteEventTimeTimer(window);
+        } catch (Exception e) {
+            // TODO: 异常处理
         }
     }
+
+    @SuppressWarnings("unchecked")
+    private void initWindowState(Map stormConf, TopologyContext context) throws Exception {
+        this.windowStateNamespace = context.getThisComponentId() + "-" + context.getThisTaskId();
+
+        String stateBackendType = (String) stormConf.getOrDefault(STORM_STATE_BACKEND_TYPE, STORM_STATE_BACKEND_ROCKSDB);
+        if (stateBackendType.equals(STORM_STATE_BACKEND_ROCKSDB)) {
+            String rocksDBStoreDir = (String) stormConf.get(STORM_STATE_ROCKSDB_STORE_DIR);
+            if (rocksDBStoreDir == null || rocksDBStoreDir.isEmpty()) {
+                throw new IllegalArgumentException("RocksDB store directory empty");
+            }
+            // TODO: State checkpoint
+            RocksDBStateBackend rocksDBStateBackend = new RocksDBStateBackend(null, TernaryBoolean.fromBoxedBoolean(false));
+            rocksDBStateBackend.setDbStoragePath(rocksDBStoreDir);
+            rocksDBStateBackend.setPredefinedOptions(SPINNING_DISK_OPTIMIZED_HIGH_MEM);
+
+            String optionCls = (String) stormConf.get(STORM_STATE_ROCKSDB_OPTIONS_CLASS);
+            if (optionCls != null && !optionCls.isEmpty()) {
+                OptionsFactory optionsFactory = (OptionsFactory) Class.forName(optionCls).newInstance();
+                rocksDBStateBackend.setOptionsFactory(optionsFactory);
+            }
+
+            this.keyedStateBackend = rocksDBStateBackend.createKeyedStateBackend(
+                   stormConf,
+                   context.getThisComponentId(),
+                   context.getThisTaskId(),
+                   TimeWindow.TimeWindowSerializer.INSTANCE,
+                   10,
+                   new KeyGroupRange(0, 9));
+
+            this.windowState = ((RocksDBKeyedStateBackend) keyedStateBackend).createListState(
+                    StringSerializer.INSTANCE,
+                    windowStateDescriptor);
+            ((RocksDBListState<TimeWindow, String, Tuple>) windowState).setCurrentNamespace(windowStateNamespace);
+       } else {
+           // TODO:
+       }
+    }
+
+
 
     private int getMaxSpoutPending(Map stormConf) {
         int maxPending = Integer.MAX_VALUE;
@@ -369,31 +383,6 @@ public class WindowedBoltExecutor implements IRichBolt, WindowTrigger {
         }
     }
 
-    private class AccumulatedStateContext implements WindowTrigger {
-
-        @Override
-        public void trigger(TimeWindow stateWindow) {
-            // 清除用户定义状态窗口
-            // 需要保证状态窗口的对应的窗口都已被清除
-            boolean delay = false;
-            for (TimeWindow pendingWindow : userWindowToStateWindow.keySet()) {
-                if (stateWindow.getEnd() >= pendingWindow.getEnd()) {
-                    delay = true;
-                    break;
-                }
-            }
-
-            // 需要延迟, 则重新注册任务
-            if (delay) {
-                windowContext.registerFuture(System.currentTimeMillis() + 50, stateWindow, accumulatedStateContext);
-            } else {
-                // TODO: State Object清空
-                accumulatedUserWindowStates.remove(stateWindow);
-            }
-        }
-
-    }
-
     private class WindowContext implements Trigger.TriggerContext {
 
         private ScheduledFuture<?> registerFuture(long expectedEnd, TimeWindow window, WindowTrigger target) {
@@ -417,7 +406,7 @@ public class WindowedBoltExecutor implements IRichBolt, WindowTrigger {
 
         @Override
         public long getMaxLagMs() {
-            return WindowedBoltExecutor.this.maxLagMs;
+            return BasicWindowedBoltExecutor.this.maxLagMs;
         }
 
         @Override
@@ -432,7 +421,7 @@ public class WindowedBoltExecutor implements IRichBolt, WindowTrigger {
         @Override
         public void registerEventTimeTimer(long time, TimeWindow window) {
             if (!eventTimeTimerFutures.containsKey(window)) {
-                eventTimeTimerFutures.put(window, registerFuture(time, window, WindowedBoltExecutor.this));
+                eventTimeTimerFutures.put(window, registerFuture(time, window, BasicWindowedBoltExecutor.this));
             }
         }
     }

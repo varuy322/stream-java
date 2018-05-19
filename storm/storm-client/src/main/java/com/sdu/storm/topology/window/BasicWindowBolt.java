@@ -1,32 +1,36 @@
 package com.sdu.storm.topology.window;
 
+import com.sdu.storm.state.ListStateDescriptor;
+import com.sdu.storm.state.typeutils.TypeSerializer;
+import com.sdu.storm.state.typeutils.base.ListSerializer;
 import org.apache.storm.tuple.Tuple;
 import org.apache.storm.windowing.TimestampExtractor;
 
-public abstract class BasicWindowBolt<T extends Tuple> implements IWindowBolt<T> {
+import java.util.Collections;
+import java.util.List;
+
+public abstract class BasicWindowBolt implements IWindowBolt<Tuple> {
 
     public static final long DEFAULT_SLIDE = -1L;
     public static final long DEFAULT_STATE_SIZE = -1L;
 
-    private WindowAssigner<T> windowAssigner;
-    // 窗口状态(滚动窗口)
-    private WindowAssigner<T> windowStateAssigner;
+    private WindowAssigner<Tuple> windowAssigner;
+
+    private ListStateDescriptor<Tuple> stateDescriptor;
 
     // watermark
     private WatermarkGenerator watermarkGenerator;
-    private WatermarkTriggerPolicy watermarkTriggerPolicy;
     private TimestampExtractor timestampExtractor;
 
 
     private long maxLagMs;
     private long size;
     private long slide;
-    private long stateSize = DEFAULT_STATE_SIZE;
 
     /**
      * 滚动计数窗口
      * */
-    public BasicWindowBolt<T> countWindow(long size) {
+    public BasicWindowBolt countWindow(long size) {
         ensurePositiveTime(size);
 
         setSizeAndSlide(size, DEFAULT_SLIDE);
@@ -40,7 +44,7 @@ public abstract class BasicWindowBolt<T extends Tuple> implements IWindowBolt<T>
      * Note:
      *  窗口滑动长度要小于窗口长度
      * */
-    public BasicWindowBolt<T> countWindow(long size, long slide) {
+    public BasicWindowBolt countWindow(long size, long slide) {
         ensurePositiveTime(size, slide);
         ensureSizeGreaterThanSlide(size, slide);
 
@@ -51,28 +55,9 @@ public abstract class BasicWindowBolt<T extends Tuple> implements IWindowBolt<T>
     }
 
     /**
-     * 窗口状态(采用"滚动窗口")
-     *
-     * Note:
-     *  状态窗口必须在窗口长度设置后再设置
-     * */
-    public BasicWindowBolt<T> withStateSize(Time size) {
-        long s = size.toMilliseconds();
-        ensurePositiveTime(s);
-        ensureStateSizeGreaterThanWindowSize(this.size, s);
-
-        this.stateSize = s;
-        if (WindowAssigner.isEventTime(windowAssigner)) {
-            this.windowStateAssigner = TumblingEventTimeWindow.create(s);
-        }
-
-        return this;
-    }
-
-    /**
      * 滚动计时窗口
      * */
-    public BasicWindowBolt<T> eventTimeWindow(Time size) {
+    public BasicWindowBolt eventTimeWindow(Time size) {
         long s = size.toMilliseconds();
         ensurePositiveTime(s);
 
@@ -86,7 +71,7 @@ public abstract class BasicWindowBolt<T extends Tuple> implements IWindowBolt<T>
      * Note:
      *  窗口滑动时间长度要小于窗口时间长度
      * */
-    public BasicWindowBolt<T> eventTimeWindow(Time size, Time slide) {
+    public BasicWindowBolt eventTimeWindow(Time size, Time slide) {
         long s = size.toMilliseconds();
         long l = slide.toMilliseconds();
         ensurePositiveTime(s, l);
@@ -98,26 +83,28 @@ public abstract class BasicWindowBolt<T extends Tuple> implements IWindowBolt<T>
     }
 
     //
-    public BasicWindowBolt<T> withTimestampExtractor(TimestampExtractor timestampExtractor) {
+    public BasicWindowBolt withTimestampExtractor(TimestampExtractor timestampExtractor) {
         this.timestampExtractor = timestampExtractor;
         return this;
     }
 
     /**仅支持EventTimeWindow*/
-    public BasicWindowBolt<T> withWatermarkGenerator(WatermarkGenerator watermarkGenerator) {
+    public BasicWindowBolt withWatermarkGenerator(WatermarkGenerator watermarkGenerator) {
         this.watermarkGenerator = watermarkGenerator;
         return this;
     }
 
-    /**仅支持EventTimeWindow*/
-    public BasicWindowBolt<T> withWatermarkTriggerPolicy(WatermarkTriggerPolicy triggerPolicy) {
-        this.watermarkTriggerPolicy = triggerPolicy;
+    public BasicWindowBolt withMaxLagMs(Time maxLag) {
+        this.maxLagMs = maxLag.toMilliseconds();
+        ensureNonNegativeTime(maxLagMs);
         return this;
     }
 
-    public BasicWindowBolt<T> withMaxLagMs(Time maxLag) {
-        this.maxLagMs = maxLag.toMilliseconds();
-        ensureNonNegativeTime(maxLagMs);
+    public BasicWindowBolt withListStateDescriptor(TypeSerializer<Tuple> typeSerializer) {
+        this.stateDescriptor = new ListStateDescriptor<>(
+                "WindowState",
+                new ListSerializer<>(typeSerializer),
+                Collections.emptyList());
         return this;
     }
 
@@ -162,28 +149,20 @@ public abstract class BasicWindowBolt<T extends Tuple> implements IWindowBolt<T>
         return slide;
     }
 
-    public long getStateSize() {
-        return stateSize;
-    }
-
     public long getMaxLagMs() {
         return maxLagMs;
     }
 
-    public WindowAssigner<T> getWindowAssigner() {
+    public WindowAssigner<Tuple> getWindowAssigner() {
         return windowAssigner;
     }
 
-    public WindowAssigner<T> getWindowStateAssigner() {
-        return windowStateAssigner;
+    public ListStateDescriptor<Tuple> getStateDescriptor() {
+        return stateDescriptor;
     }
 
     public WatermarkGenerator getWatermarkGenerator() {
         return watermarkGenerator;
-    }
-
-    public WatermarkTriggerPolicy getWatermarkTriggerPolicy() {
-        return watermarkTriggerPolicy;
     }
 
     public TimestampExtractor getTimestampExtractor() {

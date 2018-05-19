@@ -102,7 +102,7 @@ public class RocksDBListState<K, N, V>
     }
 
     @Override
-    public Iterable<V> get() throws Exception {
+    public List<V> get() throws Exception {
         try {
             // 读取数据时, 需要初始化:
             //      KeyedStateBackend.setCurrentKey()
@@ -202,7 +202,7 @@ public class RocksDBListState<K, N, V>
 
     @Override
     public void clear() {
-
+        super.clear();
     }
 
     private byte[] getPreMergedValue(List<V> values) throws IOException {

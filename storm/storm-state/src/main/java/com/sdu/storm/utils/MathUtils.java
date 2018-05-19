@@ -2,6 +2,14 @@ package com.sdu.storm.utils;
 
 public class MathUtils {
 
+
+    public static int longToIntWithBitMixing(long in) {
+        in = (in ^ (in >>> 30)) * 0xbf58476d1ce4e5b9L;
+        in = (in ^ (in >>> 27)) * 0x94d049bb133111ebL;
+        in = in ^ (in >>> 31);
+        return (int) in;
+    }
+
     /**
      * This function hashes an integer value.
      *
