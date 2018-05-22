@@ -1,9 +1,7 @@
 package com.sdu.stream.state.rocksdb;
 
 import com.google.common.collect.Lists;
-import com.sdu.stream.state.InternalListState;
-import com.sdu.stream.state.KeyedStateBackend;
-import com.sdu.stream.state.ValueStateDescriptor;
+import com.sdu.stream.state.*;
 import com.sdu.stream.state.seralizer.TypeSerializer;
 import com.sdu.stream.state.utils.ConfigConstants;
 import com.sdu.stream.state.utils.FileUtils;
@@ -102,6 +100,19 @@ public class RocksDBKeyedStateBackend<KEY> implements KeyedStateBackend<KEY> {
     }
 
     @Override
+    public <N, T> InternalValueState<N, KEY, T> createValueState(TypeSerializer<N> namespaceSerializer,
+                                                                 ValueStateDescriptor<T> stateDesc) throws IOException {
+        String stateName = stateDesc.getName();
+        ColumnFamilyHandle columnFamily = createColumnFamily(stateName);
+        kvStateInformation.put(stateName, columnFamily);
+        return new RocksDBValueState<>(
+                columnFamily,
+                namespaceSerializer,
+                stateDesc.getSerializer(),
+                this);
+    }
+
+    @Override
     public <N, T> InternalListState<N, KEY, T> createListState(TypeSerializer<N> namespaceSerializer,
                                                                ValueStateDescriptor<T> stateDesc) throws IOException {
         String stateName = stateDesc.getName();
@@ -112,6 +123,11 @@ public class RocksDBKeyedStateBackend<KEY> implements KeyedStateBackend<KEY> {
                 namespaceSerializer,
                 this,
                 stateDesc.getSerializer());
+    }
+
+    @Override
+    public <N, UK, UV> InternalMapState<KEY, N, UK, UV> createMapState(TypeSerializer<N> namespaceSerializer) throws IOException {
+        return null;
     }
 
     @Override

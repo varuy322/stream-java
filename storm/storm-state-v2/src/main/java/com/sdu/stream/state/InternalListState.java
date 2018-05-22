@@ -4,7 +4,7 @@ import java.io.IOException;
 import java.util.List;
 
 public interface InternalListState<N, K, T>
-        extends InternalAppendingState<N, K, T, List<T>, List<T>> {
+        extends InternalAppendingState<N, K, T, T, List<T>> {
 
     void update(N namespace, K userKey, List<T> values) throws IOException;
 

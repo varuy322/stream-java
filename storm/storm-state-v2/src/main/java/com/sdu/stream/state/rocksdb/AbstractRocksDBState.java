@@ -11,7 +11,7 @@ import org.rocksdb.WriteOptions;
 import java.io.IOException;
 import java.util.List;
 
-public abstract class AbstractRocksDBState<N, K, V> implements InternalKvState<N, K, List<V>> {
+public abstract class AbstractRocksDBState<N, K, V> implements InternalKvState<N, K, V> {
 
     protected RocksDBKeyedStateBackend<K> backend;
 
