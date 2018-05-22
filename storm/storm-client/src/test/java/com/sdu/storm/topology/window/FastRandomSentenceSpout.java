@@ -6,6 +6,8 @@ import org.apache.storm.topology.IRichSpout;
 import org.apache.storm.topology.OutputFieldsDeclarer;
 import org.apache.storm.tuple.Fields;
 import org.apache.storm.tuple.Values;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.Map;
 import java.util.Random;
@@ -66,7 +68,8 @@ public class FastRandomSentenceSpout implements IRichSpout {
     @Override
     public void nextTuple() {
         if (sentNum >= maxSendNum) {
-            sleepMs(1);
+            sleepMs(1000);
+            sentNum = 0;
             return;
         }
 

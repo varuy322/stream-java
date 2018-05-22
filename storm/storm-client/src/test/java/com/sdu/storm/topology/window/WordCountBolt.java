@@ -1,6 +1,7 @@
 package com.sdu.storm.topology.window;
 
 import com.google.common.collect.Maps;
+import com.sdu.storm.topology.types.WindowTuple;
 import org.apache.storm.task.OutputCollector;
 import org.apache.storm.task.TopologyContext;
 import org.apache.storm.topology.OutputFieldsDeclarer;
@@ -11,7 +12,7 @@ import org.slf4j.LoggerFactory;
 import java.util.List;
 import java.util.Map;
 
-public class WordCountBolt extends BasicWindowBolt<Tuple> {
+public class WordCountBolt extends BasicWindowBolt {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(WordCountBolt.class);
 
@@ -28,16 +29,16 @@ public class WordCountBolt extends BasicWindowBolt<Tuple> {
     }
 
     @Override
-    public void execute(List<Tuple> windowTuples, TimeWindow window) {
+    public void execute(List<WindowTuple> windowTuples, TimeWindow window) {
         if (windowTuples == null || windowTuples.isEmpty()) {
             return;
         }
 
         Map<String, Integer> counter = Maps.newHashMap();
-        for (Tuple tuple : windowTuples) {
+        for (WindowTuple tuple : windowTuples) {
             String word = tuple.getString(0);
-            long timestamp = tuple.getLong(1);
-            LOGGER.info("TimeWindow: {}, word: {}, timestamp: {}", window, word, timestamp);
+//            long timestamp = tuple.getLong(1);
+//            LOGGER.info("TimeWindow: {}, word: {}, timestamp: {}", window, word, timestamp);
 
             int num = counter.getOrDefault(word, 0);
             num += 1;
@@ -62,14 +63,14 @@ public class WordCountBolt extends BasicWindowBolt<Tuple> {
         sb.append("[");
         boolean first = true;
         for (Map.Entry<String, Integer> entry : map.entrySet()) {
-            sb.append(entry.getKey());
-            sb.append(":");
-            sb.append(entry.getValue());
             if (first) {
                 first = false;
             } else {
                 sb.append(", ");
             }
+            sb.append(entry.getKey());
+            sb.append(":");
+            sb.append(entry.getValue());
         }
 
         sb.append("]");

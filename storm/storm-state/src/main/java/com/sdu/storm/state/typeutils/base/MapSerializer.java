@@ -38,22 +38,31 @@ public class MapSerializer<K, V> extends TypeSerializer<Map<K, V>> {
 
     @Override
     public void serialize(Map<K, V> record, DataOutputView target) throws IOException {
-        target.writeInt(record.size());
-        for (Map.Entry<K, V> entry : record.entrySet()) {
-            K key = entry.getKey();
-            V value = entry.getValue();
-            keySerializer.serialize(key, target);
-            if (value == null) {
-                target.writeBoolean(true);
-            } else {
-                target.writeBoolean(false);
-                valueSerializer.serialize(value, target);
+        if (record == null) {
+            target.writeBoolean(true);
+        } else {
+            target.writeBoolean(false);
+            target.writeInt(record.size());
+            for (Map.Entry<K, V> entry : record.entrySet()) {
+                K key = entry.getKey();
+                V value = entry.getValue();
+                keySerializer.serialize(key, target);
+                if (value == null) {
+                    target.writeBoolean(true);
+                } else {
+                    target.writeBoolean(false);
+                    valueSerializer.serialize(value, target);
+                }
             }
         }
     }
 
     @Override
     public Map<K, V> deserialize(DataInputView source) throws IOException {
+        boolean isNull = source.readBoolean();
+        if (isNull) {
+            return null;
+        }
         int size = source.readInt();
         Map<K, V> record = Maps.newHashMapWithExpectedSize(size);
         for (int i = 0; i < size; ++i) {

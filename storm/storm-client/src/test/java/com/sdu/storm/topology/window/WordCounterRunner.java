@@ -11,6 +11,8 @@ import java.util.concurrent.TimeUnit;
 
 import static com.sdu.storm.configuration.ConfigConstants.TOPOLOGY_STATE_ROCKSDB_LIB_DIR;
 import static com.sdu.storm.topology.utils.StormUtils.STORM_STATE_ROCKSDB_STORE_DIR;
+import static org.apache.storm.Config.TOPOLOGY_WORKER_CHILDOPTS;
+import static org.apache.storm.Config.WORKER_HEAP_MEMORY_MB;
 
 public class WordCounterRunner {
 
@@ -20,6 +22,9 @@ public class WordCounterRunner {
         // RocksDB设置
         stormConf.put(TOPOLOGY_STATE_ROCKSDB_LIB_DIR, "/Users/hanhan.zhang/tmp/rocksdb-lib");
         stormConf.put(STORM_STATE_ROCKSDB_STORE_DIR, "file:/Users/hanhan.zhang/tmp/rocksdb-store");
+
+        // 设置Worker节点JVM内存大小
+        stormConf.put(TOPOLOGY_WORKER_CHILDOPTS, "-Xmx2048M");
 
         RTDTopologyBuilder topologyBuilder = new RTDTopologyBuilder();
 
@@ -33,7 +38,6 @@ public class WordCounterRunner {
         WordCountBolt wordCountBolt = new WordCountBolt();
         wordCountBolt.eventTimeWindow(Time.of(1, TimeUnit.SECONDS))
                      .withTimestampExtractor(tuple -> tuple.getLong(1));
-//                     .withListStateDescriptor(new TupleSerializer());
 
         topologyBuilder.setBolt("WordCounter", wordCountBolt, 1)
                        .fieldsGrouping("SplitBolt", new Fields("word"));

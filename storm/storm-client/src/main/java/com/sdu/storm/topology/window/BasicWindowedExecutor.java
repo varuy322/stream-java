@@ -13,6 +13,7 @@ import com.sdu.storm.state.rocksdb.RocksDBKeyedStateBackend;
 import com.sdu.storm.state.rocksdb.RocksDBListState;
 import com.sdu.storm.state.rocksdb.RocksDBStateBackend;
 import com.sdu.storm.state.typeutils.base.StringSerializer;
+import com.sdu.storm.topology.types.WindowTuple;
 import com.sdu.storm.utils.StormRuntimeException;
 import com.sdu.storm.utils.TernaryBoolean;
 import org.apache.storm.Config;
@@ -35,14 +36,16 @@ import java.util.concurrent.*;
 import static com.sdu.storm.state.rocksdb.PredefinedOptions.SPINNING_DISK_OPTIMIZED_HIGH_MEM;
 import static com.sdu.storm.topology.utils.StormUtils.*;
 import static com.sdu.storm.topology.window.TimeCharacteristic.EVENT_TIME;
+import static org.apache.storm.Config.TOPOLOGY_BOLTS_LATE_TUPLE_STREAM;
 
 /**
+ * TODO: StateBackend change to thread safe
  *
  * @author hanhan.zhang
  * */
-public class BasicWindowedBoltExecutor implements IRichBolt, WindowTrigger {
+public class BasicWindowedExecutor implements IRichBolt, WindowTrigger {
 
-    private static final Logger LOGGER = LoggerFactory.getLogger(BasicWindowedBoltExecutor.class);
+    private static final Logger LOGGER = LoggerFactory.getLogger(BasicWindowedExecutor.class);
 
     private static final String LATE_TUPLE = "Late_Tuple";
 
@@ -60,12 +63,13 @@ public class BasicWindowedBoltExecutor implements IRichBolt, WindowTrigger {
     private transient WindowContext windowContext;
 
     // ------------------------------------window state-------------------------------------
+    private Semaphore STATE_LOCK;
     private transient AbstractKeyedStateBackend<TimeWindow> keyedStateBackend;
-    private transient ListStateDescriptor<Tuple> windowStateDescriptor;
+    private transient ListStateDescriptor<WindowTuple> windowStateDescriptor;
     /** The bolt state store namespace */
     private transient String windowStateNamespace;
     /** The state in which the window contents is stored. Each window is a key */
-    private transient ListState<Tuple> windowState;
+    private transient ListState<WindowTuple> windowState;
 
     /**************************************watermark相关*******************************************/
     private transient TimeCharacteristic timeCharacteristic;
@@ -80,17 +84,17 @@ public class BasicWindowedBoltExecutor implements IRichBolt, WindowTrigger {
     private transient ScheduledThreadPoolExecutor timerTriggerThreadPool;
     private transient ConcurrentMap<TimeWindow, ScheduledFuture<?>> eventTimeTimerFutures;
 
-    private BasicWindowBolt<Tuple> windowBolt;
+    private BasicWindowBolt windowBolt;
 
-    public BasicWindowedBoltExecutor(BasicWindowBolt<Tuple> windowBolt) {
+    public BasicWindowedExecutor(BasicWindowBolt windowBolt) {
         this.windowBolt = windowBolt;
-        this.windowStateDescriptor = windowBolt.getStateDescriptor();
     }
 
     @Override
     public void prepare(Map stormConf, TopologyContext context, OutputCollector collector) {
         this.collector = collector;
         this.windowAssigner = windowBolt.getWindowAssigner();
+        this.windowStateDescriptor = windowBolt.getStateDescriptor();
 
         this.windowContext = new WindowContext();
         this.windowToTriggers = Maps.newConcurrentMap();
@@ -121,13 +125,13 @@ public class BasicWindowedBoltExecutor implements IRichBolt, WindowTrigger {
         this.eventTimeTimerFutures = Maps.newConcurrentMap();
 
         if (this.timestampExtractor != null) {
-            lateTupleStream = (String) stormConf.get(Config.TOPOLOGY_BOLTS_LATE_TUPLE_STREAM);
+            lateTupleStream = (String) stormConf.get(TOPOLOGY_BOLTS_LATE_TUPLE_STREAM);
         }
 
         validate(stormConf);
         windowBolt.prepare(stormConf, context, collector);
 
-        /***************************watermark相关属性*************************/
+        // ------------------------ Watermark相关属性 -------------------------
         this.timestampExtractor = windowBolt.getTimestampExtractor();
         this.watermarkGenerator = windowBolt.getWatermarkGenerator();
         if (windowBolt.getMaxLagMs() < 0) {
@@ -174,18 +178,17 @@ public class BasicWindowedBoltExecutor implements IRichBolt, WindowTrigger {
 
         // 划分窗口
         Collection<TimeWindow> windows = windowAssigner.assignWindows(input, currentTupleTs);
+        WindowTuple windowTuple = WindowTuple.apply(input);
         for (TimeWindow window : windows) {
-            // Window State
-            keyedStateBackend.setCurrentKey(window);
             try {
-                List<Tuple> windowTuples = windowState.get();
-                if (windowTuples == null) {
-                    windowTuples = Lists.newLinkedList();
-                }
-                windowTuples.add(input);
-                windowState.add(input);
+                STATE_LOCK.acquire();
+                // Window State
+                keyedStateBackend.setCurrentKey(window);
+                windowState.add(windowTuple);
             } catch (Exception e) {
                 // TODO:
+            } finally {
+                STATE_LOCK.release();
             }
 
             // 注册映射关系
@@ -238,8 +241,10 @@ public class BasicWindowedBoltExecutor implements IRichBolt, WindowTrigger {
         windowBolt.declareOutputFields(declarer);
 
         // Late Tuple Stream
-        String lateTupleStream = (String) getComponentConfiguration().get(Config.TOPOLOGY_BOLTS_LATE_TUPLE_STREAM);
-        if (lateTupleStream != null) {
+        Map componentConf = getComponentConfiguration();
+        String lateTupleStream;
+        if (componentConf != null &&
+                (lateTupleStream = (String) componentConf.get(TOPOLOGY_BOLTS_LATE_TUPLE_STREAM)) != null) {
             declarer.declareStream(lateTupleStream, new Fields(LATE_TUPLE));
         }
     }
@@ -251,23 +256,38 @@ public class BasicWindowedBoltExecutor implements IRichBolt, WindowTrigger {
 
     @Override
     public void trigger(TimeWindow window) {
-        keyedStateBackend.setCurrentKey(window);
+        List<WindowTuple> windowTuples = null;
         try {
-            List<Tuple> windowTuples = windowState.get();
-            windowBolt.execute(windowTuples, window);
-            // 清除窗口数据
-            windowState.clear();
-            windowToTriggers.remove(window);
-            if (timeCharacteristic == EVENT_TIME) {
-                windowContext.deleteEventTimeTimer(window);
-            }
+            STATE_LOCK.acquire();
+            // StateBackend not thread safe
+            keyedStateBackend.setCurrentKey(window);
+            windowTuples = windowState.get();
         } catch (Exception e) {
-            // TODO: 异常处理
+            if (e instanceof InterruptedException) {
+                LOGGER.error("State lock obtain failure", e);
+                // TODO: monitor ?
+            } else {
+                // TODO: retry get state ?
+            }
+        } finally {
+            STATE_LOCK.release();
+        }
+
+        if (windowTuples != null) {
+            windowBolt.execute(windowTuples, window);
+        }
+
+        // 清除窗口数据
+        windowState.clear();
+        windowToTriggers.remove(window);
+        if (timeCharacteristic == EVENT_TIME) {
+            windowContext.deleteEventTimeTimer(window);
         }
     }
 
     @SuppressWarnings("unchecked")
     private void initWindowState(Map stormConf, TopologyContext context) throws Exception {
+        this.STATE_LOCK = new Semaphore(1, true);
         this.windowStateNamespace = context.getThisComponentId() + "-" + context.getThisTaskId();
 
         String stateBackendType = (String) stormConf.getOrDefault(STORM_STATE_BACKEND_TYPE, STORM_STATE_BACKEND_ROCKSDB);
@@ -277,7 +297,8 @@ public class BasicWindowedBoltExecutor implements IRichBolt, WindowTrigger {
                 throw new IllegalArgumentException("RocksDB store directory empty");
             }
             // TODO: State checkpoint
-            RocksDBStateBackend rocksDBStateBackend = new RocksDBStateBackend(null, TernaryBoolean.fromBoxedBoolean(false));
+            String checkpointDataUri = "hdfs://127.0.0.1:54310/user/hadoop/";
+            RocksDBStateBackend rocksDBStateBackend = new RocksDBStateBackend(checkpointDataUri, false);
             rocksDBStateBackend.setDbStoragePath(rocksDBStoreDir);
             rocksDBStateBackend.setPredefinedOptions(SPINNING_DISK_OPTIMIZED_HIGH_MEM);
 
@@ -298,7 +319,7 @@ public class BasicWindowedBoltExecutor implements IRichBolt, WindowTrigger {
             this.windowState = ((RocksDBKeyedStateBackend) keyedStateBackend).createListState(
                     StringSerializer.INSTANCE,
                     windowStateDescriptor);
-            ((RocksDBListState<TimeWindow, String, Tuple>) windowState).setCurrentNamespace(windowStateNamespace);
+            ((RocksDBListState<TimeWindow, String, WindowTuple>) windowState).setCurrentNamespace(windowStateNamespace);
        } else {
            // TODO:
        }
@@ -325,13 +346,12 @@ public class BasicWindowedBoltExecutor implements IRichBolt, WindowTrigger {
     private void validate(Map stormConf) {
         long size = windowBolt.getSize();
         long slide = windowBolt.getSlide();
-        long stateSize = windowBolt.getStateSize();
 
         if (timeCharacteristic == EVENT_TIME) {
-            //todo: size must be dividable too
-            if (stateSize > 0 && stateSize % size != 0) {
-                throw new IllegalArgumentException("state window size and window size must be dividable!");
-            }
+            // TODO: size must be dividable too
+//            if (stateSize > 0 && stateSize % size != 0) {
+//                throw new IllegalArgumentException("state window size and window size must be dividable!");
+//            }
         } else {
             // 对于滑动窗口, 待确认的Tuple数据长度等于窗口长度
             int maxSpoutPending = getMaxSpoutPending(stormConf);
@@ -351,7 +371,7 @@ public class BasicWindowedBoltExecutor implements IRichBolt, WindowTrigger {
         this.timerTriggerThreadPool.scheduleAtFixedRate(() -> {
             long newWatermark = watermarkGenerator.getCurrentWatermark();
             if (newWatermark > currentWatermark) {
-                LOGGER.debug("Generating new watermark: {}", newWatermark);
+                LOGGER.debug("Generate new watermark: {}", newWatermark);
                 currentWatermark = newWatermark;
                 //
                 checkEventTimeWindows();
@@ -367,7 +387,6 @@ public class BasicWindowedBoltExecutor implements IRichBolt, WindowTrigger {
                 // 当前窗口已位于水平线之下, 清除窗口
                 windowContext.deleteEventTimeTimer(window);
                 windowContext.registerEventTimeTimer(0, window);
-                // TODO: 当前任务是否清除
             } else {
                 // 注册窗口清除任务
                 windowContext.registerEventTimeTimer(window.getEnd() + maxLagMs, window);
@@ -406,7 +425,7 @@ public class BasicWindowedBoltExecutor implements IRichBolt, WindowTrigger {
 
         @Override
         public long getMaxLagMs() {
-            return BasicWindowedBoltExecutor.this.maxLagMs;
+            return BasicWindowedExecutor.this.maxLagMs;
         }
 
         @Override
@@ -421,7 +440,7 @@ public class BasicWindowedBoltExecutor implements IRichBolt, WindowTrigger {
         @Override
         public void registerEventTimeTimer(long time, TimeWindow window) {
             if (!eventTimeTimerFutures.containsKey(window)) {
-                eventTimeTimerFutures.put(window, registerFuture(time, window, BasicWindowedBoltExecutor.this));
+                eventTimeTimerFutures.put(window, registerFuture(time, window, BasicWindowedExecutor.this));
             }
         }
     }

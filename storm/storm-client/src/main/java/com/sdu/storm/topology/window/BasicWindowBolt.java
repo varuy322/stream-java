@@ -1,22 +1,24 @@
 package com.sdu.storm.topology.window;
 
 import com.sdu.storm.state.ListStateDescriptor;
-import com.sdu.storm.state.typeutils.TypeSerializer;
 import com.sdu.storm.state.typeutils.base.ListSerializer;
+import com.sdu.storm.topology.types.WindowTuple;
 import org.apache.storm.tuple.Tuple;
 import org.apache.storm.windowing.TimestampExtractor;
 
-import java.util.Collections;
-import java.util.List;
+import static java.util.Collections.emptyList;
 
-public abstract class BasicWindowBolt implements IWindowBolt<Tuple> {
+public abstract class BasicWindowBolt implements IWindowBolt {
 
     public static final long DEFAULT_SLIDE = -1L;
-    public static final long DEFAULT_STATE_SIZE = -1L;
 
     private WindowAssigner<Tuple> windowAssigner;
 
-    private ListStateDescriptor<Tuple> stateDescriptor;
+    private ListStateDescriptor<WindowTuple> stateDescriptor = new ListStateDescriptor<>(
+            "WindowTupleState",
+            new ListSerializer<>(WindowTuple.WindowTupleSerializer.INSTANCE),
+            emptyList()
+    );
 
     // watermark
     private WatermarkGenerator watermarkGenerator;
@@ -100,14 +102,6 @@ public abstract class BasicWindowBolt implements IWindowBolt<Tuple> {
         return this;
     }
 
-    public BasicWindowBolt withListStateDescriptor(TypeSerializer<Tuple> typeSerializer) {
-        this.stateDescriptor = new ListStateDescriptor<>(
-                "WindowState",
-                new ListSerializer<>(typeSerializer),
-                Collections.emptyList());
-        return this;
-    }
-
     private void setSizeAndSlide(long size, long slide) {
         this.size = size;
         this.slide = slide;
@@ -135,12 +129,6 @@ public abstract class BasicWindowBolt implements IWindowBolt<Tuple> {
         }
     }
 
-    private static void ensureStateSizeGreaterThanWindowSize(long winSize, long stateSize) {
-        if (winSize > stateSize) {
-            throw new IllegalArgumentException("state window size must be greater than window size!");
-        }
-    }
-
     public long getSize() {
         return size;
     }
@@ -157,7 +145,7 @@ public abstract class BasicWindowBolt implements IWindowBolt<Tuple> {
         return windowAssigner;
     }
 
-    public ListStateDescriptor<Tuple> getStateDescriptor() {
+    public ListStateDescriptor<WindowTuple> getStateDescriptor() {
         return stateDescriptor;
     }
 

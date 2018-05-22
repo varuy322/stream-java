@@ -24,6 +24,9 @@ public class SplitSentence implements IRichBolt {
         long timestamp = System.currentTimeMillis();
         String sentence = tuple.getString(0);
         for (String word : sentence.split("\\s+")) {
+            if (word == null || word.isEmpty() || word.equals(" ")) {
+                continue;
+            }
             collector.emit(new Values(word, timestamp));
         }
     }

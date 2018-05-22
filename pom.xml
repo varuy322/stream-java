@@ -14,6 +14,7 @@
         <module>storm/storm-client</module>
         <module>storm/storm-dynamicJob</module>
         <module>storm/storm-state</module>
+        <module>storm/storm-state-v2</module>
     </modules>
 
     <properties>

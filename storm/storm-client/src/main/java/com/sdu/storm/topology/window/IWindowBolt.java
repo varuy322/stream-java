@@ -1,9 +1,9 @@
 package com.sdu.storm.topology.window;
 
+import com.sdu.storm.topology.types.WindowTuple;
 import org.apache.storm.task.OutputCollector;
 import org.apache.storm.task.TopologyContext;
 import org.apache.storm.topology.IComponent;
-import org.apache.storm.tuple.Tuple;
 
 import java.util.List;
 import java.util.Map;
@@ -11,12 +11,12 @@ import java.util.Map;
 /**
  * @author hanhan.zhang
  * */
-interface IWindowBolt<T extends Tuple> extends IComponent {
+interface IWindowBolt extends IComponent {
 
     void prepare(Map stormConf, TopologyContext context, OutputCollector collector);
 
     void cleanup();
 
     /** delete window from state backend */
-    void execute(List<T> windowTuples, TimeWindow window);
+    void execute(List<WindowTuple> windowTuples, TimeWindow window);
 }
