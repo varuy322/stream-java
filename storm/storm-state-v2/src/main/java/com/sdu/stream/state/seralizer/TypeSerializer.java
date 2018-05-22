@@ -10,4 +10,5 @@ public abstract class TypeSerializer<T> implements Serializable {
     public abstract void serializer(T element, DataOutput output) throws IOException;
 
     public abstract T deserialize(DataInput input) throws IOException;
+
 }
