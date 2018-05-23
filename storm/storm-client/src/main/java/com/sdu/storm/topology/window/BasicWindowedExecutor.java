@@ -4,18 +4,14 @@ import com.codahale.metrics.Counter;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
-import com.sdu.storm.state.AbstractKeyedStateBackend;
-import com.sdu.storm.state.KeyGroupRange;
-import com.sdu.storm.state.ListState;
-import com.sdu.storm.state.ListStateDescriptor;
-import com.sdu.storm.state.rocksdb.OptionsFactory;
-import com.sdu.storm.state.rocksdb.RocksDBKeyedStateBackend;
-import com.sdu.storm.state.rocksdb.RocksDBListState;
-import com.sdu.storm.state.rocksdb.RocksDBStateBackend;
-import com.sdu.storm.state.typeutils.base.StringSerializer;
 import com.sdu.storm.topology.types.WindowTuple;
-import com.sdu.storm.utils.StormRuntimeException;
-import com.sdu.storm.utils.TernaryBoolean;
+import com.sdu.stream.state.InternalListState;
+import com.sdu.stream.state.KeyedStateBackend;
+import com.sdu.stream.state.ListStateDescriptor;
+import com.sdu.stream.state.rocksdb.OptionsFactory;
+import com.sdu.stream.state.rocksdb.PredefinedOptions;
+import com.sdu.stream.state.rocksdb.RocksDBStateUtils;
+import com.sdu.stream.state.seralizer.base.StringSerializer;
 import org.apache.storm.Config;
 import org.apache.storm.task.OutputCollector;
 import org.apache.storm.task.TopologyContext;
@@ -27,13 +23,13 @@ import org.apache.storm.windowing.TimestampExtractor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.File;
 import java.util.Collection;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.*;
 
-import static com.sdu.storm.state.rocksdb.PredefinedOptions.SPINNING_DISK_OPTIMIZED_HIGH_MEM;
 import static com.sdu.storm.topology.utils.StormUtils.*;
 import static com.sdu.storm.topology.window.TimeCharacteristic.EVENT_TIME;
 import static org.apache.storm.Config.TOPOLOGY_BOLTS_LATE_TUPLE_STREAM;
@@ -63,13 +59,15 @@ public class BasicWindowedExecutor implements IRichBolt, WindowTrigger {
     private transient WindowContext windowContext;
 
     // ------------------------------------window state-------------------------------------
-    private Semaphore STATE_LOCK;
-    private transient AbstractKeyedStateBackend<TimeWindow> keyedStateBackend;
-    private transient ListStateDescriptor<WindowTuple> windowStateDescriptor;
-    /** The bolt state store namespace */
-    private transient String windowStateNamespace;
-    /** The state in which the window contents is stored. Each window is a key */
-    private transient ListState<WindowTuple> windowState;
+    private transient KeyedStateBackend<TimeWindow> stateBackend;
+    private transient String windowNamespace;
+    private transient ListStateDescriptor<WindowTuple> windowStateDesc;
+    private transient InternalListState<String, TimeWindow, WindowTuple> windowState;
+
+//    private transient AbstractKeyedStateBackend<TimeWindow> keyedStateBackend;
+//    private transient ListStateDescriptor<WindowTuple> windowStateDescriptor;
+//    private transient String windowStateNamespace;
+//    private transient ListState<WindowTuple> windowState;
 
     /**************************************watermark相关*******************************************/
     private transient TimeCharacteristic timeCharacteristic;
@@ -94,7 +92,7 @@ public class BasicWindowedExecutor implements IRichBolt, WindowTrigger {
     public void prepare(Map stormConf, TopologyContext context, OutputCollector collector) {
         this.collector = collector;
         this.windowAssigner = windowBolt.getWindowAssigner();
-        this.windowStateDescriptor = windowBolt.getStateDescriptor();
+        this.windowStateDesc = windowBolt.getStateDescriptor();
 
         this.windowContext = new WindowContext();
         this.windowToTriggers = Maps.newConcurrentMap();
@@ -102,7 +100,7 @@ public class BasicWindowedExecutor implements IRichBolt, WindowTrigger {
         try {
             initWindowState(stormConf, context);
         } catch (Exception e) {
-            throw new StormRuntimeException("initialize window state backend failure", e);
+            throw new RuntimeException("initialize window state backend failure", e);
         }
 
         if (WindowAssigner.isEventTime(this.windowAssigner)) {
@@ -181,14 +179,10 @@ public class BasicWindowedExecutor implements IRichBolt, WindowTrigger {
         WindowTuple windowTuple = WindowTuple.apply(input);
         for (TimeWindow window : windows) {
             try {
-                STATE_LOCK.acquire();
                 // Window State
-                keyedStateBackend.setCurrentKey(window);
-                windowState.add(windowTuple);
+                windowState.add(windowNamespace, window, windowTuple);
             } catch (Exception e) {
                 // TODO:
-            } finally {
-                STATE_LOCK.release();
             }
 
             // 注册映射关系
@@ -225,11 +219,8 @@ public class BasicWindowedExecutor implements IRichBolt, WindowTrigger {
         }
 
         try {
-            if (windowState != null) {
-                windowState.clear();
-            }
-            if (keyedStateBackend != null) {
-                keyedStateBackend.dispose();
+            if (stateBackend != null) {
+                stateBackend.dispose();
             }
         } catch (Exception e) {
             LOGGER.error("Clean window state failure", e);
@@ -258,19 +249,9 @@ public class BasicWindowedExecutor implements IRichBolt, WindowTrigger {
     public void trigger(TimeWindow window) {
         List<WindowTuple> windowTuples = null;
         try {
-            STATE_LOCK.acquire();
-            // StateBackend not thread safe
-            keyedStateBackend.setCurrentKey(window);
-            windowTuples = windowState.get();
+            windowTuples = windowState.get(windowNamespace, window);
         } catch (Exception e) {
-            if (e instanceof InterruptedException) {
-                LOGGER.error("State lock obtain failure", e);
-                // TODO: monitor ?
-            } else {
-                // TODO: retry get state ?
-            }
-        } finally {
-            STATE_LOCK.release();
+            // TODO: retry get state ?
         }
 
         if (windowTuples != null) {
@@ -278,7 +259,7 @@ public class BasicWindowedExecutor implements IRichBolt, WindowTrigger {
         }
 
         // 清除窗口数据
-        windowState.clear();
+        windowState.clear(windowNamespace, window);
         windowToTriggers.remove(window);
         if (timeCharacteristic == EVENT_TIME) {
             windowContext.deleteEventTimeTimer(window);
@@ -287,39 +268,31 @@ public class BasicWindowedExecutor implements IRichBolt, WindowTrigger {
 
     @SuppressWarnings("unchecked")
     private void initWindowState(Map stormConf, TopologyContext context) throws Exception {
-        this.STATE_LOCK = new Semaphore(1, true);
-        this.windowStateNamespace = context.getThisComponentId() + "-" + context.getThisTaskId();
+        this.windowNamespace = context.getThisComponentId() + "-" + context.getThisTaskId();
 
         String stateBackendType = (String) stormConf.getOrDefault(STORM_STATE_BACKEND_TYPE, STORM_STATE_BACKEND_ROCKSDB);
         if (stateBackendType.equals(STORM_STATE_BACKEND_ROCKSDB)) {
-            String rocksDBStoreDir = (String) stormConf.get(STORM_STATE_ROCKSDB_STORE_DIR);
-            if (rocksDBStoreDir == null || rocksDBStoreDir.isEmpty()) {
-                throw new IllegalArgumentException("RocksDB store directory empty");
+            String rocksDBBaseDirectory = (String) stormConf.get(STORM_STATE_ROCKSDB_BASE_DIRECTORY);
+            if (rocksDBBaseDirectory == null || rocksDBBaseDirectory.isEmpty()) {
+                throw new IllegalArgumentException("RocksDB directory empty");
             }
-            // TODO: State checkpoint
-            String checkpointDataUri = "hdfs://127.0.0.1:54310/user/hadoop/";
-            RocksDBStateBackend rocksDBStateBackend = new RocksDBStateBackend(checkpointDataUri, false);
-            rocksDBStateBackend.setDbStoragePath(rocksDBStoreDir);
-            rocksDBStateBackend.setPredefinedOptions(SPINNING_DISK_OPTIMIZED_HIGH_MEM);
+            LOGGER.debug("Begin initialize window rocks state backend.");
 
             String optionCls = (String) stormConf.get(STORM_STATE_ROCKSDB_OPTIONS_CLASS);
+            OptionsFactory optionsFactory = null;
             if (optionCls != null && !optionCls.isEmpty()) {
-                OptionsFactory optionsFactory = (OptionsFactory) Class.forName(optionCls).newInstance();
-                rocksDBStateBackend.setOptionsFactory(optionsFactory);
+                optionsFactory = (OptionsFactory) Class.forName(optionCls).newInstance();
             }
 
-            this.keyedStateBackend = rocksDBStateBackend.createKeyedStateBackend(
-                   stormConf,
-                   context.getThisComponentId(),
-                   context.getThisTaskId(),
-                   TimeWindow.TimeWindowSerializer.INSTANCE,
-                   10,
-                   new KeyGroupRange(0, 9));
+            this.stateBackend = RocksDBStateUtils.createRocksDBKeyStateBackend(
+                    new File(rocksDBBaseDirectory),
+                    PredefinedOptions.SPINNING_DISK_OPTIMIZED_HIGH_MEM,
+                    optionsFactory,
+                    TimeWindow.TimeWindowSerializer.INSTANCE);
 
-            this.windowState = ((RocksDBKeyedStateBackend) keyedStateBackend).createListState(
+            this.windowState = this.stateBackend.createListState(
                     StringSerializer.INSTANCE,
-                    windowStateDescriptor);
-            ((RocksDBListState<TimeWindow, String, WindowTuple>) windowState).setCurrentNamespace(windowStateNamespace);
+                    windowStateDesc);
        } else {
            // TODO:
        }

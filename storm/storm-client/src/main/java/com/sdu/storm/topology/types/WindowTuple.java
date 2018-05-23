@@ -2,13 +2,14 @@ package com.sdu.storm.topology.types;
 
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
-import com.sdu.storm.state.typeutils.base.*;
 import com.sdu.storm.topology.types.base.*;
-import com.sdu.storm.utils.DataInputView;
-import com.sdu.storm.utils.DataOutputView;
+import com.sdu.stream.state.seralizer.TypeSerializer;
+import com.sdu.stream.state.seralizer.base.*;
 import org.apache.storm.tuple.Fields;
 import org.apache.storm.tuple.Tuple;
 
+import java.io.DataInput;
+import java.io.DataOutput;
 import java.io.IOException;
 import java.io.Serializable;
 import java.util.Iterator;
@@ -176,7 +177,7 @@ public class WindowTuple implements Serializable {
 
     }
 
-    public static final class WindowTupleSerializer extends TypeSerializerSingleton<WindowTuple> {
+    public static final class WindowTupleSerializer extends TypeSerializer<WindowTuple> {
 
         public static final WindowTupleSerializer INSTANCE = new WindowTupleSerializer();
 
@@ -187,30 +188,15 @@ public class WindowTuple implements Serializable {
         private WindowTupleSerializer() {}
 
         @Override
-        public WindowTuple createInstance() {
-            throw new UnsupportedOperationException("Unsupported create WindowTuple instance");
-        }
-
-        @Override
-        public int getLength() {
-            return -1;
-        }
-
-        @Override
-        public boolean isImmutableType() {
-            return false;
-        }
-
-        @Override
-        public void serialize(WindowTuple record, DataOutputView target) throws IOException {
+        public void serializer(WindowTuple record, DataOutput target) throws IOException {
             // sourceTaskId
-            IntSerializer.INSTANCE.serialize(record.getSourceTask(), target);
+            IntSerializer.INSTANCE.serializer(record.getSourceTask(), target);
 
             // sourceComponent
-            StringSerializer.INSTANCE.serialize(record.getSourceComponent(), target);
+            StringSerializer.INSTANCE.serializer(record.getSourceComponent(), target);
 
             // field index
-            _serializer.serialize(record.fieldIndex, target);
+            _serializer.serializer(record.fieldIndex, target);
 
             // field value
             List<TupleObject<?>> tuples = record.getValues();
@@ -225,28 +211,28 @@ public class WindowTuple implements Serializable {
                 target.writeInt(type.ordinal());
                 switch (type) {
                     case TUPLE_INT:
-                        IntSerializer.INSTANCE.serialize((Integer) tuple.getValue(), target);
+                        IntSerializer.INSTANCE.serializer((Integer) tuple.getValue(), target);
                         break;
                     case TUPLE_FLOAT:
-                        FloatSerializer.INSTANCE.serialize((Float) tuple.getValue(), target);
+                        FloatSerializer.INSTANCE.serializer((Float) tuple.getValue(), target);
                         break;
                     case TUPLE_DOUBLE:
-                        DoubleSerializer.INSTANCE.serialize((Double) tuple.getValue(), target);
+                        DoubleSerializer.INSTANCE.serializer((Double) tuple.getValue(), target);
                         break;
                     case TUPLE_BYTE:
-                        ByteSerializer.INSTANCE.serialize((Byte) tuple.getValue(), target);
+                        ByteSerializer.INSTANCE.serializer((Byte) tuple.getValue(), target);
                         break;
                     case TUPLE_BOOLEAN:
-                        BooleanSerializer.INSTANCE.serialize((Boolean) tuple.getValue(), target);
+                        BooleanSerializer.INSTANCE.serializer((Boolean) tuple.getValue(), target);
                         break;
                     case TUPLE_LONG:
-                        LongSerializer.INSTANCE.serialize((Long) tuple.getValue(), target);
+                        LongSerializer.INSTANCE.serializer((Long) tuple.getValue(), target);
                         break;
                     case TUPLE_SHORT:
-                        ShortSerializer.INSTANCE.serialize((Short) tuple.getValue(), target);
+                        ShortSerializer.INSTANCE.serializer((Short) tuple.getValue(), target);
                         break;
                     case TUPLE_STRING:
-                        StringSerializer.INSTANCE.serialize((String) tuple.getValue(), target);
+                        StringSerializer.INSTANCE.serializer((String) tuple.getValue(), target);
                         break;
                     default:
                         throw new IllegalArgumentException("Unsupported tuple type: " + type);
@@ -255,7 +241,7 @@ public class WindowTuple implements Serializable {
         }
 
         @Override
-        public WindowTuple deserialize(DataInputView source) throws IOException {
+        public WindowTuple deserialize(DataInput source) throws IOException {
             // sourceTaskId
             int sourceTaskId = IntSerializer.INSTANCE.deserialize(source);
 
@@ -311,16 +297,6 @@ public class WindowTuple implements Serializable {
                     sourceComponentId,
                     fieldIndex,
                     values);
-        }
-
-        @Override
-        public WindowTuple copy(WindowTuple from) {
-            throw new UnsupportedOperationException("Unsupported copy WindowTuple");
-        }
-
-        @Override
-        public boolean canEqual(Object obj) {
-            return obj instanceof WindowTupleSerializer;
         }
 
     }

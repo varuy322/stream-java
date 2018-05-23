@@ -25,7 +25,7 @@
 
         <dependency>
             <groupId>com.sdu.data</groupId>
-            <artifactId>storm-state</artifactId>
+            <artifactId>storm-state-v2</artifactId>
             <version>1.0-SNAPSHOT</version>
         </dependency>
 

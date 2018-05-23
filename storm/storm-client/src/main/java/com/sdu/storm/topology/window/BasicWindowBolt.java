@@ -1,8 +1,7 @@
 package com.sdu.storm.topology.window;
 
-import com.sdu.storm.state.ListStateDescriptor;
-import com.sdu.storm.state.typeutils.base.ListSerializer;
 import com.sdu.storm.topology.types.WindowTuple;
+import com.sdu.stream.state.ListStateDescriptor;
 import org.apache.storm.tuple.Tuple;
 import org.apache.storm.windowing.TimestampExtractor;
 
@@ -16,7 +15,7 @@ public abstract class BasicWindowBolt implements IWindowBolt {
 
     private ListStateDescriptor<WindowTuple> stateDescriptor = new ListStateDescriptor<>(
             "WindowTupleState",
-            new ListSerializer<>(WindowTuple.WindowTupleSerializer.INSTANCE),
+            WindowTuple.WindowTupleSerializer.INSTANCE,
             emptyList()
     );
 

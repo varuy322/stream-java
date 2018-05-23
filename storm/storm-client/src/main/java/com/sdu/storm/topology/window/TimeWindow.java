@@ -1,9 +1,9 @@
 package com.sdu.storm.topology.window;
 
-import com.sdu.storm.state.typeutils.base.TypeSerializerSingleton;
-import com.sdu.storm.utils.DataInputView;
-import com.sdu.storm.utils.DataOutputView;
+import com.sdu.stream.state.seralizer.TypeSerializer;
 
+import java.io.DataInput;
+import java.io.DataOutput;
 import java.io.IOException;
 import java.io.Serializable;
 
@@ -55,46 +55,21 @@ public class TimeWindow implements Serializable {
         return "TimeWindow[start=" + start + ", end=" + end + ']';
     }
 
-    public static final class TimeWindowSerializer extends TypeSerializerSingleton<TimeWindow> {
+    public static final class TimeWindowSerializer extends TypeSerializer<TimeWindow> {
 
         public static final TimeWindowSerializer INSTANCE = new TimeWindowSerializer();
 
         private TimeWindowSerializer() { }
 
         @Override
-        public TimeWindow createInstance() {
-            return null;
-        }
-
-        @Override
-        public int getLength() {
-            return 0;
-        }
-
-        @Override
-        public boolean isImmutableType() {
-            return true;
-        }
-
-        @Override
-        public void serialize(TimeWindow record, DataOutputView target) throws IOException {
+        public void serializer(TimeWindow record, DataOutput target) throws IOException {
             target.writeLong(record.getStart());
             target.writeLong(record.getEnd());
         }
 
         @Override
-        public TimeWindow deserialize(DataInputView source) throws IOException {
+        public TimeWindow deserialize(DataInput source) throws IOException {
             return new TimeWindow(source.readLong(), source.readLong());
-        }
-
-        @Override
-        public TimeWindow copy(TimeWindow from) {
-            return from;
-        }
-
-        @Override
-        public boolean canEqual(Object obj) {
-            return obj instanceof TimeWindowSerializer;
         }
     }
 }

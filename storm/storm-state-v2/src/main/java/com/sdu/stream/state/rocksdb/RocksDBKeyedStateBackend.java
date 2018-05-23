@@ -7,9 +7,12 @@ import com.sdu.stream.state.utils.ConfigConstants;
 import com.sdu.stream.state.utils.FileUtils;
 import com.sdu.stream.state.utils.Preconditions;
 import org.rocksdb.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.io.IOException;
+import java.lang.reflect.Field;
 import java.util.*;
 import java.util.stream.Stream;
 
@@ -19,10 +22,16 @@ import static org.rocksdb.RocksDB.DEFAULT_COLUMN_FAMILY;
 
 public class RocksDBKeyedStateBackend<KEY> implements KeyedStateBackend<KEY> {
 
+    private static final Logger LOGGER = LoggerFactory.getLogger(RocksDBKeyedStateBackend.class);
 
     private TypeSerializer<KEY> keyTypeSerializer;
 
     //----------------------------------RocksDB-------------------------------------
+
+    /** Flag whether the native library has been loaded. */
+    private static boolean rocksDbInitialized = false;
+    /** The number of (re)tries for loading the RocksDB JNI library. */
+    private static final int ROCKSDB_LIB_LOADING_ATTEMPTS = 3;
 
     /** The name of the merge operator in RocksDB. Do not change except you know exactly what you do. */
     public static final String MERGE_OPERATOR_NAME = "stringappendtest";
@@ -64,31 +73,28 @@ public class RocksDBKeyedStateBackend<KEY> implements KeyedStateBackend<KEY> {
                                     TypeSerializer<KEY> keySerializer) throws IOException {
         this.keyTypeSerializer = Preconditions.checkNotNull(keySerializer);
 
+        this.rocksBaseDirectory = instanceBasePath;
+        checkAndCreateDirectory(instanceBasePath);
+
+        this.rocksLibDirectory = new File(rocksBaseDirectory, "lib");
+        ensureRocksDBIsLoaded(rocksLibDirectory);
+
+        String rocksDBDirectoryPath = rocksBaseDirectory.getAbsolutePath() + "/store/" + UUID.randomUUID();
+        this.rocksDBDirectory = new File(rocksDBDirectoryPath, "db");
+        if (rocksDBDirectory.exists()) {
+            // 删除RocksDB存储目录数据, 否则创建RocksDB实例异常
+            FileUtils.cleanDirectory(rocksDBDirectory);
+        } else {
+            checkAndCreateDirectory(rocksDBDirectory);
+        }
+
+        this.kvStateInformation = new LinkedHashMap<>();
 
         this.dbOptions = Preconditions.checkNotNull(dbOptions);
         this.columnOptions = Preconditions.checkNotNull(columnFamilyOptions)
                                           .setMergeOperatorName(MERGE_OPERATOR_NAME);
         this.writeOptions = new WriteOptions().setDisableWAL(true);
 
-        this.rocksBaseDirectory = instanceBasePath;
-        checkAndCreateDirectory(instanceBasePath);
-
-        this.rocksDBDirectory = new File(rocksBaseDirectory, "db");
-        if (rocksDBDirectory.exists()) {
-            // 删除RocksDB数据存储目录的文件
-            FileUtils.cleanDirectoryInternal(rocksDBDirectory);
-        } else {
-            checkAndCreateDirectory(rocksDBDirectory);
-        }
-
-        this.rocksLibDirectory = new File(rocksBaseDirectory, "lib");
-        if (rocksLibDirectory.exists()) {
-            FileUtils.cleanDirectoryInternal(rocksLibDirectory);
-        } else {
-            checkAndCreateDirectory(rocksLibDirectory);
-        }
-
-        this.kvStateInformation = new LinkedHashMap<>();
 
         // 构建RocksDB实例
         createDB();
@@ -114,7 +120,7 @@ public class RocksDBKeyedStateBackend<KEY> implements KeyedStateBackend<KEY> {
 
     @Override
     public <N, T> InternalListState<N, KEY, T> createListState(TypeSerializer<N> namespaceSerializer,
-                                                               ValueStateDescriptor<T> stateDesc) throws IOException {
+                                                               ListStateDescriptor<T> stateDesc) throws IOException {
         String stateName = stateDesc.getName();
         ColumnFamilyHandle columnFamily = createColumnFamily(stateName);
         kvStateInformation.put(stateName, columnFamily);
@@ -122,12 +128,22 @@ public class RocksDBKeyedStateBackend<KEY> implements KeyedStateBackend<KEY> {
                 columnFamily,
                 namespaceSerializer,
                 this,
-                stateDesc.getSerializer());
+                stateDesc.getElementSerializer());
     }
 
     @Override
-    public <N, UK, UV> InternalMapState<KEY, N, UK, UV> createMapState(TypeSerializer<N> namespaceSerializer) throws IOException {
-        return null;
+    public <N, UK, UV> InternalMapState<N, KEY, UK, UV> createMapState(TypeSerializer<N> namespaceSerializer,
+                                                                       MapStateDescriptor<UK, UV> stateDesc) throws IOException {
+        String stateName = stateDesc.getName();
+        ColumnFamilyHandle columnFamily = createColumnFamily(stateName);
+        kvStateInformation.put(stateName, columnFamily);
+
+        return new RocksDBMapState<>(
+                columnFamily,
+                namespaceSerializer,
+                stateDesc.getUserKeySerializer(),
+                stateDesc.getUserValueSerializer(),
+                this);
     }
 
     @Override
@@ -138,6 +154,7 @@ public class RocksDBKeyedStateBackend<KEY> implements KeyedStateBackend<KEY> {
     public WriteOptions getWriteOptions() {
         return writeOptions;
     }
+
 
     private void createDB() throws IOException {
         List<ColumnFamilyHandle> columnFamilyHandles = new ArrayList<>(1);
@@ -173,6 +190,66 @@ public class RocksDBKeyedStateBackend<KEY> implements KeyedStateBackend<KEY> {
                 "Not all requested column family handles have been created");
 
         return dbRef;
+    }
+
+    private static void ensureRocksDBIsLoaded(File rocksLibDir) throws IOException {
+        synchronized (RocksDBKeyedStateBackend.class) {
+            if (!rocksDbInitialized) {
+                final File tempDirParent = rocksLibDir.getAbsoluteFile();
+                LOGGER.info("Attempting to load RocksDB native library and store it under '{}'", tempDirParent);
+
+                Throwable lastException = null;
+                for (int i = 0; i < ROCKSDB_LIB_LOADING_ATTEMPTS; ++i) {
+                    try {
+                        // when multiple instances of this class and RocksDB exist in different
+                        // class loaders, then we can see the following exception:
+                        // "java.lang.UnsatisfiedLinkError: Native Library /path/to/temp/dir/librocksdbjni-linux64.so
+                        // already loaded in another class loader"
+
+                        // to avoid that, we need to add a random element to the library file path
+                        // (I know, seems like an unnecessary hack, since the JVM obviously can handle multiple
+                        //  instances of the same JNI library being loaded in different class loaders, but
+                        //  apparently not when coming from the same file path, so there we go)
+
+                        final File rocksLibFolder = new File(tempDirParent, "rocksdb-lib-" + UUID.randomUUID());
+
+                        // make sure the temp path exists
+                        LOGGER.debug("Attempting to create RocksDB native library folder {}", rocksLibFolder);
+                        // noinspection ResultOfMethodCallIgnored
+                        rocksLibFolder.mkdirs();
+
+                        // explicitly load the JNI dependency if it has not been loaded before
+                        NativeLibraryLoader.getInstance().loadLibrary(rocksLibFolder.getAbsolutePath());
+
+                        // this initialization here should validate that the loading succeeded
+                        RocksDB.loadLibrary();
+
+                        // seems to have worked
+                        LOGGER.info("Successfully loaded RocksDB native library");
+                        rocksDbInitialized = true;
+                        return;
+                    } catch (Throwable t) {
+                        lastException = t;
+                        LOGGER.debug("RocksDB JNI library loading attempt {} failed", i, t);
+
+                        // try to force RocksDB to attempt reloading the library
+                        try {
+                            resetRocksDBLoadedFlag();
+                        } catch (Throwable tt) {
+                            LOGGER.debug("Failed to reset 'initialized' flag in RocksDB native code loader", tt);
+                        }
+                    }
+                }
+
+                throw new IOException("Could not load the native RocksDB library", lastException);
+            }
+        }
+    }
+
+    private static void resetRocksDBLoadedFlag() throws Exception {
+        final Field initField = org.rocksdb.NativeLibraryLoader.class.getDeclaredField("initialized");
+        initField.setAccessible(true);
+        initField.setBoolean(null, false);
     }
 
     private ColumnFamilyHandle createColumnFamily(String stateName) throws IOException {

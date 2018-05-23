@@ -3,16 +3,13 @@ package com.sdu.storm.topology.window;
 import com.google.common.collect.Maps;
 import com.sdu.storm.topology.RTDTopologyBuilder;
 import org.apache.storm.LocalCluster;
-import org.apache.storm.StormSubmitter;
 import org.apache.storm.tuple.Fields;
 
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
-import static com.sdu.storm.configuration.ConfigConstants.TOPOLOGY_STATE_ROCKSDB_LIB_DIR;
-import static com.sdu.storm.topology.utils.StormUtils.STORM_STATE_ROCKSDB_STORE_DIR;
+import static com.sdu.storm.topology.utils.StormUtils.STORM_STATE_ROCKSDB_BASE_DIRECTORY;
 import static org.apache.storm.Config.TOPOLOGY_WORKER_CHILDOPTS;
-import static org.apache.storm.Config.WORKER_HEAP_MEMORY_MB;
 
 public class WordCounterRunner {
 
@@ -20,8 +17,7 @@ public class WordCounterRunner {
         Map<String, Object> stormConf = Maps.newHashMap();
 
         // RocksDB设置
-        stormConf.put(TOPOLOGY_STATE_ROCKSDB_LIB_DIR, "/Users/hanhan.zhang/tmp/rocksdb-lib");
-        stormConf.put(STORM_STATE_ROCKSDB_STORE_DIR, "file:/Users/hanhan.zhang/tmp/rocksdb-store");
+        stormConf.put(STORM_STATE_ROCKSDB_BASE_DIRECTORY, "file:/Users/hanhan.zhang/tmp/rocksdb");
 
         // 设置Worker节点JVM内存大小
         stormConf.put(TOPOLOGY_WORKER_CHILDOPTS, "-Xmx2048M");

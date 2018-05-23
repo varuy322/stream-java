@@ -10,13 +10,14 @@ public interface KeyedStateBackend<K> extends Disposable {
 
     <N> Stream<K> getKeys(String state, N namespace);
 
-    <N, T> InternalValueState<N, K, T> createValueState(TypeSerializer<N> namespaceSerializer,
+    <N, T> InternalValueState<N,K, T> createValueState(TypeSerializer<N> namespaceSerializer,
                                                         ValueStateDescriptor<T> stateDesc) throws IOException;
 
     <N, T> InternalListState<N, K, T> createListState(TypeSerializer<N> namespaceSerializer,
-                                                      ValueStateDescriptor<T> stateDesc) throws IOException;
+                                                      ListStateDescriptor<T> stateDesc) throws IOException;
 
-    <N, UK, UV> InternalMapState<K, N, UK, UV> createMapState(TypeSerializer<N> namespaceSerializer) throws IOException;
+    <N, UK, UV> InternalMapState<N, K, UK, UV> createMapState(TypeSerializer<N> namespaceSerializer,
+                                                              MapStateDescriptor<UK, UV> stateDesc) throws IOException;
 
 
     TypeSerializer<K> getKeyTypeSerializer();
