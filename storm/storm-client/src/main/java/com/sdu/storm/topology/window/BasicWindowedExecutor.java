@@ -344,7 +344,7 @@ public class BasicWindowedExecutor implements IRichBolt, WindowTrigger {
         this.timerTriggerThreadPool.scheduleAtFixedRate(() -> {
             long newWatermark = watermarkGenerator.getCurrentWatermark();
             if (newWatermark > currentWatermark) {
-                LOGGER.debug("Generate new watermark: {}", newWatermark);
+                LOGGER.debug("Generating new watermark: {}", newWatermark);
                 currentWatermark = newWatermark;
                 //
                 checkEventTimeWindows();
