@@ -17,7 +17,7 @@ public class WordCounterRunner {
         Map<String, Object> stormConf = Maps.newHashMap();
 
         // RocksDB设置
-        stormConf.put(STORM_STATE_ROCKSDB_BASE_DIRECTORY, "file:/Users/hanhan.zhang/tmp/rocksdb");
+        stormConf.put(STORM_STATE_ROCKSDB_BASE_DIRECTORY, "/Users/hanhan.zhang/tmp/rocksdb");
 
         // 设置Worker节点JVM内存大小
         stormConf.put(TOPOLOGY_WORKER_CHILDOPTS, "-Xmx2048M");
