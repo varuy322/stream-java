@@ -5,6 +5,7 @@ import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.sdu.storm.topology.types.WindowTuple;
+import com.sdu.storm.topology.utils.GsonUtils;
 import com.sdu.stream.state.InternalListState;
 import com.sdu.stream.state.KeyedStateBackend;
 import com.sdu.stream.state.ListStateDescriptor;
@@ -19,6 +20,7 @@ import org.apache.storm.topology.IRichBolt;
 import org.apache.storm.topology.OutputFieldsDeclarer;
 import org.apache.storm.tuple.Fields;
 import org.apache.storm.tuple.Tuple;
+import org.apache.storm.tuple.TupleImpl;
 import org.apache.storm.windowing.TimestampExtractor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -36,6 +38,8 @@ import static org.apache.storm.Config.TOPOLOGY_BOLTS_LATE_TUPLE_STREAM;
 
 /**
  * TODO: StateBackend change to thread safe
+ *
+ * TODO: How storm serializer/deserializer Tuple
  *
  * @author hanhan.zhang
  * */
@@ -63,11 +67,6 @@ public class BasicWindowedExecutor implements IRichBolt, WindowTrigger {
     private transient String windowNamespace;
     private transient ListStateDescriptor<WindowTuple> windowStateDesc;
     private transient InternalListState<String, TimeWindow, WindowTuple> windowState;
-
-//    private transient AbstractKeyedStateBackend<TimeWindow> keyedStateBackend;
-//    private transient ListStateDescriptor<WindowTuple> windowStateDescriptor;
-//    private transient String windowStateNamespace;
-//    private transient ListState<WindowTuple> windowState;
 
     /**************************************watermark相关*******************************************/
     private transient TimeCharacteristic timeCharacteristic;
@@ -166,6 +165,7 @@ public class BasicWindowedExecutor implements IRichBolt, WindowTrigger {
             if (lateTupleStream != null) {
                 collector.emit(lateTupleStream, Lists.newArrayList(input));
             }
+            collector.ack(input);
             return;
         }
 
@@ -247,6 +247,8 @@ public class BasicWindowedExecutor implements IRichBolt, WindowTrigger {
 
     @Override
     public void trigger(TimeWindow window) {
+        // TODO: 确认该窗口的Tuple
+
         List<WindowTuple> windowTuples = null;
         try {
             windowTuples = windowState.get(windowNamespace, window);
