@@ -11,7 +11,6 @@
     <modules>
         <module>flink</module>
         <module>storm/storm-client</module>
-        <module>storm/storm-dynamicJob</module>
         <module>storm/storm-state</module>
         <module>storm/storm-state-v2</module>
         <module>spark/spark-sql</module>

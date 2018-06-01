@@ -9,6 +9,7 @@ import org.apache.flink.api.common.functions.RichFlatMapFunction;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.contrib.streaming.state.RocksDBStateBackend;
+import org.apache.flink.streaming.api.CheckpointingMode;
 import org.apache.flink.streaming.api.datastream.DataStreamSource;
 import org.apache.flink.streaming.api.environment.CheckpointConfig;
 import org.apache.flink.streaming.api.environment.LocalStreamEnvironment;
@@ -37,7 +38,7 @@ public class WordCountStatistic {
     private static final String EXTERNAL_CHECK_STATE_DIR = "file:///Users/hanhan.zhang/tmp/external/chk";
     private static final String CHECK_STATE_PATH = "file:///Users/hanhan.zhang/tmp/chk";
 
-    // 是否只统计汉子
+    // 是否只统计汉字
     private static final String STATISTIC_CHINESE_ONLY = "statistic.chinese.only";
 
     private static class TransferWord extends RichFlatMapFunction<String[], Tuple2<String, Integer>> {
