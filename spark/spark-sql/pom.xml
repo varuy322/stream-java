@@ -2,8 +2,8 @@
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
     <parent>
-        <artifactId>stream</artifactId>
         <groupId>com.sdu.data</groupId>
+        <artifactId>stream</artifactId>
         <version>1.0-SNAPSHOT</version>
 
         <relativePath>../../pom.xml</relativePath>
@@ -14,9 +14,9 @@
     <artifactId>spark-sql</artifactId>
     <packaging>jar</packaging>
 
-    <name>A Camel Scala Route</name>
-
     <properties>
+        <spark.version>2.1.0</spark.version>
+        <elasticsearch.version>5.6.5</elasticsearch.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
     </properties>
@@ -28,7 +28,37 @@
             <artifactId>scala-library</artifactId>
             <version>2.11.7</version>
         </dependency>
+
+        <!-- Spark dependencies -->
+        <dependency>
+            <groupId>org.apache.spark</groupId>
+            <artifactId>spark-core_2.11</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.apache.spark</groupId>
+            <artifactId>spark-streaming_2.11</artifactId>
+        </dependency>
+
     </dependencies>
+
+    <dependencyManagement>
+        <dependencies>
+            <!-- Spark dependencies -->
+            <dependency>
+                <groupId>org.apache.spark</groupId>
+                <artifactId>spark-core_2.11</artifactId>
+                <version>${spark.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>org.apache.spark</groupId>
+                <artifactId>spark-streaming_2.11</artifactId>
+                <version>${spark.version}</version>
+            </dependency>
+
+        </dependencies>
+    </dependencyManagement>
 
     <build>
         <defaultGoal>install</defaultGoal>
