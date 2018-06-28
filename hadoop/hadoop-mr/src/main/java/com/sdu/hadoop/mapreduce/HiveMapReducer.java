@@ -128,7 +128,7 @@ public class HiveMapReducer extends Configured implements Tool {
 
         @Override
         protected void reduce(Text key, Iterable<Text> values, Context context) throws IOException, InterruptedException {
-            HCatRecord record = new DefaultHCatRecord(2);
+//            HCatRecord record = new DefaultHCatRecord(2);
         }
 
         @Override
