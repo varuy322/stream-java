@@ -15,6 +15,7 @@
         <module>spark/spark-sql</module>
         <module>flink/flink-kafka</module>
         <module>hadoop/hadoop-mr</module>
+        <module>hadoop/hadoop-application</module>
     </modules>
 
     <properties>

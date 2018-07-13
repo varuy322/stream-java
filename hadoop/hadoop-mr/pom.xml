@@ -13,7 +13,7 @@
     <artifactId>hadoop-mr</artifactId>
 
     <properties>
-        <hadoop.version>2.7.2</hadoop.version>
+        <hadoop.version>2.7.3</hadoop.version>
         <hcatlog.version>2.3.2</hcatlog.version>
     </properties>
 
